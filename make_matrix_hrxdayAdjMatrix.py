@@ -300,9 +300,9 @@ for file in all_files:
         if dfLabels['cluster_change_flag'].iloc[obs] == 1:
             # get neighboring rows
             neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) : 
-                                    int(np.where((obs+3) > len(dfLabels), len(dfLabels), (obs+3)))]
+                                    int(np.where((obs+4) > len(dfLabels), len(dfLabels), (obs+4)))]
             if sum(neighbors['cluster_change_flag']) > 1:
-                # print(neighbors)
+                print(neighbors)
                 # if one cluster label diff from all others, change it to the prev row label
                 if dfLabels['hour'].iloc[obs] >= median_wake_hour:
                     dfLabels['cluster'].iloc[obs] = wake_label
@@ -311,14 +311,6 @@ for file in all_files:
                 # print('new label: {}'.format(dfLabels['cluster'].iloc[obs]))
                 # recalculate all change cluster labels
                 dfLabels['cluster_change_flag'] = abs(dfLabels['cluster'].diff()).replace(float('NaN'),0)
-
-
-
-
-
-
-
-
 
 
 
@@ -375,7 +367,7 @@ for file in all_files:
 
         # this doesn't catch all gaps either
         # fix 3+ hr gaps
-        
+
 
 
 
@@ -409,3 +401,5 @@ for file in all_files:
 
     print('==========================================')
 
+
+# %%
