@@ -18,6 +18,10 @@ def numericalSort(value):
     parts[1::2] = map(int, parts[1::2])
     return(parts)
 
+def closest_hour(lst, K):
+     
+    return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
+
 def day_weight(d1,d2):
     return ((d1+d2))
 
@@ -289,41 +293,47 @@ for file in all_files:
     wake_label = dfLabels.loc[(dfLabels['hour'] > 12) & (dfLabels['hour'] < 15)]['cluster'].value_counts().idxmax()
     sleep_label = dfLabels.loc[(dfLabels['hour'] > 1) & (dfLabels['hour'] < 4)]['cluster'].value_counts().idxmax()
 
-    # get average wake time
+    # get median wake time
+    # make assumption that min hour is wake up (and not night schedule)
     wake_time = dfLabels.loc[dfLabels['cluster'] == wake_label]
     median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
 
+
+
     dfLabels['cluster_change_flag'] = abs(dfLabels['cluster'].diff()).replace(float('NaN'),0)
+    for obs in range(len(dfLabels)):
+        # print(obs)
+        if dfLabels['cluster_change_flag'].iloc[obs] == 1:
+            # get neighboring rows
+            neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) : 
+                                    int(np.where((obs+1) > len(dfLabels), len(dfLabels), (obs+1)))]
+            if sum(neighbors['cluster_change_flag']) > 1:
+                # print(neighbors)
+                # if one cluster label diff from all others, change it to the prev row label
+                if dfLabels['hour'].iloc[obs] >= median_wake_hour:
+                    dfLabels['cluster'].iloc[obs] = wake_label
+                else:
+                    dfLabels['cluster'].iloc[obs] = sleep_label
+                # print('new label: {}'.format(dfLabels['cluster'].iloc[obs]))
+        # recalculate all change cluster labels
+        dfLabels['cluster_change_flag'] = abs(dfLabels['cluster'].diff()).replace(float('NaN'),0)
+
 
     # locate first wake_label after sleep_labels
     byDay = dfLabels.groupby('day')
     for day, grp in byDay:
-        print(day)
+        # print(day)
         wake_transition = grp.loc[(grp['cluster_change_flag'] == 1) & (grp['cluster'] == wake_label)]
-        print(wake_transition)
+        if len(wake_transition) > 1:
+            wake_hr = closest_hour(list(wake_transition['hour']), median_wake_hour)
+            wake_transition = wake_transition.loc[wake_transition['hour'] == wake_hr]
+        # print(wake_transition)
+
+
 
         # break
-    break
+    
 
-
-
-    # dfLabels['cluster_change_flag'] = abs(dfLabels['cluster'].diff()).replace(float('NaN'),0)
-    # for obs in range(len(dfLabels)):
-    #     # print(obs)
-    #     if dfLabels['cluster_change_flag'].iloc[obs] == 1:
-    #         # get neighboring rows
-    #         neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) : 
-    #                                 int(np.where((obs+3) > len(dfLabels), len(dfLabels), (obs+3)))]
-    #         if sum(neighbors['cluster_change_flag']) > 1:
-    #             # print(neighbors)
-    #             # if one cluster label diff from all others, change it to the prev row label
-    #             if dfLabels['hour'].iloc[obs] >= median_wake_hour:
-    #                 dfLabels['cluster'].iloc[obs] = wake_label
-    #             else:
-    #                 dfLabels['cluster'].iloc[obs] = sleep_label
-    #             # print('new label: {}'.format(dfLabels['cluster'].iloc[obs]))
-    #             # recalculate all change cluster labels
-    #             dfLabels['cluster_change_flag'] = abs(dfLabels['cluster'].diff()).replace(float('NaN'),0)
 
 
 
@@ -386,7 +396,7 @@ for file in all_files:
 
         
 
-    
+    break
 
     if user == 10: 
         break
