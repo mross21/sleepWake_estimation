@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import seaborn as sns
 import matplotlib as mpl
+import copy
 
 # sort files numerically
 numbers = re.compile(r'(\d+)')
@@ -249,20 +250,31 @@ for file in all_files:
     cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
 
     # make new var to update rows
-    cluster_mat2 = cluster_mat
+    cluster_mat2 = copy.deepcopy(cluster_mat)
 
     # for days with low KP totals, replace cluster labels with surrounding days' data
-## or should it be if there is low spread of kp, then replace w/ surrounding days
     lowKP_threshold = np.quantile(M.sum(axis=1), 0.25) # 25th percentile of nKP/day
     lowKP_days = np.where(M.sum(axis=1) < lowKP_threshold)[0].tolist()
     for d in lowKP_days:
         if d < 2:
             # set row to average of next 3 rows
-            cluster_mat2[d] = np.around((cluster_mat2[d+1] + cluster_mat2[d+2] + cluster_mat2[d+3])/3,0)
+            cluster_mat2[d] = np.around((cluster_mat2[d+1] + cluster_mat2[d+2] + cluster_mat2[d+3])/3,1)
         else:
             # set row to average of prev 3 rows
-            cluster_mat2[d] = np.around((cluster_mat2[d-1] + cluster_mat2[d-2] + cluster_mat2[d-3])/3,0)
+            cluster_mat2[d] = np.around((cluster_mat2[d-1] + cluster_mat2[d-2] + cluster_mat2[d-3])/3,1)
 
+# ## or should it be if there is low spread of kp, then replace w/ surrounding days
+# ## or both
+######### would need to make it the spread between first and last typing of day
+#     lowTyping_threshold = 5 #int(np.quantile(np.sum(M > 10, axis=1), 0.1)) # 10th percentile of #hrs typing/day
+#     lowTyping_days = np.where(M.sum(axis=1) < lowTyping_threshold)[0].tolist()
+#     for d in lowTyping_days:
+#         if d < 2:
+#             # set row to average of next 3 rows
+#             cluster_mat2[d] = np.around((cluster_mat2[d+1] + cluster_mat2[d+2] + cluster_mat2[d+3])/3,0)
+#         else:
+#             # set row to average of prev 3 rows
+#             cluster_mat2[d] = np.around((cluster_mat2[d-1] + cluster_mat2[d-2] + cluster_mat2[d-3])/3,0)
 
 
     # make df of labels by day and hr
