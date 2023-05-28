@@ -300,9 +300,9 @@ for file in all_files:
         if dfLabels['cluster_change_flag'].iloc[obs] == 1:
             # get neighboring rows
             neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) : 
-                                    int(np.where((obs+4) > len(dfLabels), len(dfLabels), (obs+4)))]
+                                    int(np.where((obs+3) > len(dfLabels), len(dfLabels), (obs+3)))]
             if sum(neighbors['cluster_change_flag']) > 1:
-                print(neighbors)
+                # print(neighbors)
                 # if one cluster label diff from all others, change it to the prev row label
                 if dfLabels['hour'].iloc[obs] >= median_wake_hour:
                     dfLabels['cluster'].iloc[obs] = wake_label
@@ -371,7 +371,7 @@ for file in all_files:
 
 
 
-        break
+        
 
     
 
@@ -385,6 +385,10 @@ for file in all_files:
 
     # potentially, if wake up way later than normal, fix to day before?
 
+
+### instead what if label all vals as wake_label after first wake_label detected
+    # for the rest of the day... 
+    # instead of trying to fill in gaps for quick changes
 
 
 
