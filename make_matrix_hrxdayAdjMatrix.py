@@ -251,7 +251,8 @@ for file in all_files:
     # make new var to update rows
     cluster_mat2 = cluster_mat
 
-    # for days with low KP totals, replace cluster labels with prev day's
+    # for days with low KP totals, replace cluster labels with surrounding days' data
+## or should it be if there is low spread of kp, then replace w/ surrounding days
     lowKP_threshold = np.quantile(M.sum(axis=1), 0.25) # 25th percentile of nKP/day
     lowKP_days = np.where(M.sum(axis=1) < lowKP_threshold)[0].tolist()
     for d in lowKP_days:
@@ -306,28 +307,28 @@ for file in all_files:
         if dfLabels['cluster_change_flag'].iloc[obs] == 1:
             # get neighboring rows
             neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) : 
-                                    int(np.where((obs+1) > len(dfLabels), len(dfLabels), (obs+1)))]
+                                    int(np.where((obs+2) > len(dfLabels), len(dfLabels), (obs+2)))]
             if sum(neighbors['cluster_change_flag']) > 1:
-                # print(neighbors)
-                # if one cluster label diff from all others, change it to the prev row label
+                print(neighbors)
+                # if one cluster label diff from all others
                 if dfLabels['hour'].iloc[obs] >= median_wake_hour:
                     dfLabels['cluster'].iloc[obs] = wake_label
                 else:
                     dfLabels['cluster'].iloc[obs] = sleep_label
-                # print('new label: {}'.format(dfLabels['cluster'].iloc[obs]))
+                print('new label: {}'.format(dfLabels['cluster'].iloc[obs]))
         # recalculate all change cluster labels
         dfLabels['cluster_change_flag'] = abs(dfLabels['cluster'].diff()).replace(float('NaN'),0)
 
 
-    # locate first wake_label after sleep_labels
-    byDay = dfLabels.groupby('day')
-    for day, grp in byDay:
-        # print(day)
-        wake_transition = grp.loc[(grp['cluster_change_flag'] == 1) & (grp['cluster'] == wake_label)]
-        if len(wake_transition) > 1:
-            wake_hr = closest_hour(list(wake_transition['hour']), median_wake_hour)
-            wake_transition = wake_transition.loc[wake_transition['hour'] == wake_hr]
-        # print(wake_transition)
+    # # locate first wake_label after sleep_labels
+    # byDay = dfLabels.groupby('day')
+    # for day, grp in byDay:
+    #     # print(day)
+    #     wake_transition = grp.loc[(grp['cluster_change_flag'] == 1) & (grp['cluster'] == wake_label)]
+    #     if len(wake_transition) > 1:
+    #         wake_hr = closest_hour(list(wake_transition['hour']), median_wake_hour)
+    #         wake_transition = wake_transition.loc[wake_transition['hour'] == wake_hr]
+    #     # print(wake_transition)
 
 
 
@@ -396,7 +397,7 @@ for file in all_files:
 
         
 
-    break
+    
 
     if user == 10: 
         break
