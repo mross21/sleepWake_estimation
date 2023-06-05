@@ -170,6 +170,7 @@ for file in all_files:
     # M2_scaled = pd.DataFrame(std_scaler.fit_transform(M2), columns=M2.columns)
     # M = M2_scaled.T #M1.div(M1.sum(axis=1), axis=0) #normalize(M1, axis=1, norm='l1')
     
+    M = M1/M1.sum().sum()
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
     # days = rows
@@ -247,7 +248,7 @@ for file in all_files:
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
-    # break
+    break
     
 # print('finish')
 
