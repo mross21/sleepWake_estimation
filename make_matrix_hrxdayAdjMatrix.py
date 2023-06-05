@@ -28,7 +28,7 @@ def day_weight(d1,d2):
     return (d1+d2)
 
 def hour_weight(h1,h2):
-    return (h1+h2)/2
+    return (h1+h2)/5
 
 def weighted_adjacency_matrix(mat):
     # days = rows
@@ -160,7 +160,8 @@ for file in all_files:
         M1.insert(h,h,[0]*M1.shape[0])
     M1 = M1.sort_index(ascending=True)    
 
-    M = M1[M1.sum(axis=1) > 200]
+    # # remove rows with less than 200 kp/day
+    # M = M1[M1.sum(axis=1) > 200]
 
     # # create a scaler object
     # std_scaler = StandardScaler()
@@ -206,7 +207,7 @@ for file in all_files:
     #             .repeat(n_hours).reset_index(drop=True))
     dfM['hour'] = list(range(24))*n_days
     dfM = dfM[['day', 'hour', 'keypresses']]  # rearrange columns
-
+ 
     # Something simple for first approach: PCA
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(dfM.to_numpy())
@@ -263,16 +264,16 @@ for file in all_files:
     # make new var to update rows
     cluster_mat2 = copy.deepcopy(cluster_mat)
 
-    # for days with low KP totals, replace cluster labels with surrounding days' data
-    lowKP_threshold = np.quantile(M.sum(axis=1), 0.25) # 25th percentile of nKP/day
-    lowKP_days = np.where(M.sum(axis=1) < lowKP_threshold)[0].tolist()
-    for d in lowKP_days:
-        if d < 2:
-            # set row to average of next 3 rows
-            cluster_mat2[d] = np.around((cluster_mat2[d+1] + cluster_mat2[d+2] + cluster_mat2[d+3])/3,1)
-        else:
-            # set row to average of prev 3 rows
-            cluster_mat2[d] = np.around((cluster_mat2[d-1] + cluster_mat2[d-2] + cluster_mat2[d-3])/3,1)
+    # # for days with low KP totals, replace cluster labels with surrounding days' data
+    # lowKP_threshold = np.quantile(M.sum(axis=1), 0.25) # 25th percentile of nKP/day
+    # lowKP_days = np.where(M.sum(axis=1) < lowKP_threshold)[0].tolist()
+    # for d in lowKP_days:
+    #     if d < 2:
+    #         # set row to average of next 3 rows
+    #         cluster_mat2[d] = np.around((cluster_mat2[d+1] + cluster_mat2[d+2] + cluster_mat2[d+3])/3,1)
+    #     else:
+    #         # set row to average of prev 3 rows
+    #         cluster_mat2[d] = np.around((cluster_mat2[d-1] + cluster_mat2[d-2] + cluster_mat2[d-3])/3,1)
 
 # ## or should it be if there is low spread of kp, then replace w/ surrounding days
 # ## or both
@@ -314,8 +315,12 @@ for file in all_files:
 
 
     # get cluster label for sleep/wake
-    wake_label = dfLabels.loc[(dfLabels['hour'] > 12) & (dfLabels['hour'] < 15)]['cluster'].value_counts().idxmax()
-    sleep_label = dfLabels.loc[(dfLabels['hour'] > 1) & (dfLabels['hour'] < 4)]['cluster'].value_counts().idxmax()
+    # wake_label = dfLabels.loc[(dfLabels['hour'] > 12) & (dfLabels['hour'] < 15)]['cluster'].value_counts().idxmax()
+    # sleep_label = dfLabels.loc[(dfLabels['hour'] > 1) & (dfLabels['hour'] < 4)]['cluster'].value_counts().idxmax()
+    wake_label_idx = M[0].argmax()
+    wake_label = cluster_mat[0,wake_label_idx]
+    sleep_label_idx = M[0].argmin()
+    sleep_label = cluster_mat[0,sleep_label_idx]
 
     # get median wake time
     # make assumption that min hour is wake up (and not night schedule)
