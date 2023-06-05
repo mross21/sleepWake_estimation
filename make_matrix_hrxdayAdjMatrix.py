@@ -11,6 +11,7 @@ from sklearn.cluster import KMeans
 import seaborn as sns
 import matplotlib as mpl
 import copy
+from sklearn.preprocessing import normalize
 
 # sort files numerically
 numbers = re.compile(r'(\d+)')
@@ -20,14 +21,13 @@ def numericalSort(value):
     return(parts)
 
 def closest_hour(lst, K):
-     
     return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
 
 def day_weight(d1,d2):
-    return ((d1+d2))
+    return d1+d2
 
 def hour_weight(h1,h2):
-    return ((h1+h2)/2)
+    return (h1+h2)/2
 
 def weighted_adjacency_matrix(mat):
     # days = rows
@@ -158,6 +158,7 @@ for file in all_files:
         # M.loc[h] = [0]*M.shape[1] # to add row
         M.insert(h,h,[0]*M.shape[0])
     M = M.sort_index(ascending=True)
+    M=M/M.mean() #normalize(M, axis=1, norm='l1')
     
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
@@ -206,40 +207,41 @@ for file in all_files:
         'pca_y': X_pca[:, 1],
         'cluster': kmeans.labels_})
 
-    # # Visualize original data heatmap and heatmap with k-means cluster labels
-    # f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-    #                     figsize=(10,10))
-    # sns.heatmap(M, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # Visualize original data heatmap and heatmap with k-means cluster labels
+    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
+                        figsize=(10,10))
+    sns.heatmap(M, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # Reshape k-means cluster labels from 726d vector to 22x33
-    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
-    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-    #     'Custom',
-    #     colors=['#de8f05', '#0173b2'],
-    #     N=2)
-    # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
-    #             cbar_kws={'fraction': 0.043})
-    # colorbar = ax[1,1].collections[0].colorbar
-    # colorbar.set_ticks([0.25, 0.75])
-    # colorbar.set_ticklabels(['0', '1'])
-    # colorbar.set_label('Cluster')
-    # ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
-    # ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # ax[1,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    # f.tight_layout()
-    # plt.show(f)
+    cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'Custom',
+        colors=['#de8f05', '#0173b2'],
+        N=2)
+    sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+                cbar_kws={'fraction': 0.043})
+    colorbar = ax[1,1].collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['0', '1'])
+    colorbar.set_label('Cluster')
+    ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
+    ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[1,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    f.tight_layout()
+    plt.show(f)
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
-    # plt.close(f)
+    plt.close(f)
+    
     
     
 # print('finish')
 
-
+#%%
 ###############################################################################
 ###############################################################################
 ###############################################################################
