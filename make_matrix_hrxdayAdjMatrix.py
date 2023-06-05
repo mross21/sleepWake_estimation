@@ -157,8 +157,9 @@ for file in all_files:
     for h in missingHours:
         # M.loc[h] = [0]*M.shape[1] # to add row
         M.insert(h,h,[0]*M.shape[0])
-    M = M.sort_index(ascending=True)
-    M=M/M.mean() #normalize(M, axis=1, norm='l1')
+    M1 = M.sort_index(ascending=True)
+    means = M1.mean(axis=1)
+    M=M1.subtract(means, axis=0) #M1/M1.mean() #normalize(M, axis=1, norm='l1')
     
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
@@ -237,7 +238,7 @@ for file in all_files:
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
-    
+    break
     
 # print('finish')
 
