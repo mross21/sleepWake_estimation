@@ -11,7 +11,8 @@ from sklearn.cluster import KMeans
 import seaborn as sns
 import matplotlib as mpl
 import copy
-from sklearn.preprocessing import normalize
+# from sklearn.preprocessing import normalize
+# from sklearn.preprocessing import StandardScaler
 
 # sort files numerically
 numbers = re.compile(r'(\d+)')
@@ -24,7 +25,7 @@ def closest_hour(lst, K):
     return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
 
 def day_weight(d1,d2):
-    return d1+d2
+    return (d1+d2)
 
 def hour_weight(h1,h2):
     return (h1+h2)/2
@@ -142,9 +143,9 @@ for file in all_files:
     print('user: {}'.format(user))
 
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
-    M = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
+    M1 = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
 
-    if M.shape[0] < 7:
+    if M1.shape[0] < 7:
         print('not enough days')
         continue
     # medMax = M.max().median()
@@ -152,14 +153,21 @@ for file in all_files:
     #     print('not enough kp per day')
     #     continue
 
-    missingHours = [h for h in range(24) if h not in list(M['size'].columns)] #M.index
-    M.columns = M.columns.droplevel(0)
+    missingHours = [h for h in range(24) if h not in list(M1['size'].columns)] #M.index
+    M1.columns = M1.columns.droplevel(0)
     for h in missingHours:
         # M.loc[h] = [0]*M.shape[1] # to add row
-        M.insert(h,h,[0]*M.shape[0])
-    M1 = M.sort_index(ascending=True)
-    means = M1.mean(axis=1)
-    M=M1.subtract(means, axis=0) #M1/M1.mean() #normalize(M, axis=1, norm='l1')
+        M1.insert(h,h,[0]*M1.shape[0])
+    M1 = M1.sort_index(ascending=True)    
+
+    M = M1[M1.sum(axis=1) > 200]
+
+    # # create a scaler object
+    # std_scaler = StandardScaler()
+    # # fit and transform the data
+    # M2=M1.T
+    # M2_scaled = pd.DataFrame(std_scaler.fit_transform(M2), columns=M2.columns)
+    # M = M2_scaled.T #M1.div(M1.sum(axis=1), axis=0) #normalize(M1, axis=1, norm='l1')
     
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
@@ -211,9 +219,9 @@ for file in all_files:
     # Visualize original data heatmap and heatmap with k-means cluster labels
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10))
-    sns.heatmap(M, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
+    sns.heatmap(M, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
@@ -238,7 +246,7 @@ for file in all_files:
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
-    break
+    # break
     
 # print('finish')
 
