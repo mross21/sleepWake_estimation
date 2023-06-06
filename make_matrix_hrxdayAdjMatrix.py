@@ -118,7 +118,7 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
         H_star = E_tilde  # Eq 15
         W_star = E_tilde.T @ X @ sp.linalg.inv(C)  # Eq 15
-
+ 
     else:
         # Eq 11
         I = np.eye(B.shape[0])
@@ -170,7 +170,16 @@ for file in all_files:
     # M2_scaled = pd.DataFrame(std_scaler.fit_transform(M2), columns=M2.columns)
     # M = M2_scaled.T #M1.div(M1.sum(axis=1), axis=0) #normalize(M1, axis=1, norm='l1')
     
-    M = M1/M1.sum().sum()
+    # M = M1/M1.sum().sum()
+
+# # remove weeks with not enough data
+# # this doesn't make sense since large amounts of typing one hour out of 
+# #   the week would skew the entire filtering
+#     M1['weekNumber']=np.arange(len(M1))//7
+#     weekSums = M1.groupby('weekNumber').sum().sum(axis=1)
+#     keepWeeks = list(weekSums.loc[weekSums>10000].index)
+#     M = M1.loc[M1['weekNumber'].isin(keepWeeks)].drop(['weekNumber'], axis=1)
+
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
     # days = rows
@@ -248,7 +257,7 @@ for file in all_files:
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
-    break
+    # break
     
 # print('finish')
 
@@ -323,8 +332,11 @@ for file in all_files:
     sleep_label_idx = M[0].argmin()
     sleep_label = cluster_mat[0,sleep_label_idx]
 
+    if wake_label == sleep_label:
+        break
+
     # get median wake time
-    # make assumption that min hour is wake up (and not night schedule)
+    # makes assumption that min hour is wake up (and not night schedule)
     wake_time = dfLabels.loc[dfLabels['cluster'] == wake_label]
     median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
 
