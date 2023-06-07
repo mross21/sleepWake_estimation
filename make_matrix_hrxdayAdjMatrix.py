@@ -28,7 +28,7 @@ def day_weight(d1,d2):
     return (d1+d2)
 
 def hour_weight(h1,h2):
-    return (h1+h2)/5
+    return (h1+h2)/2
 
 def weighted_adjacency_matrix(mat):
     # days = rows
@@ -142,6 +142,9 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
+    if user != 11:
+        continue
+
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
     M1 = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
 
@@ -159,6 +162,11 @@ for file in all_files:
         # M.loc[h] = [0]*M.shape[1] # to add row
         M1.insert(h,h,[0]*M1.shape[0])
     M1 = M1.sort_index(ascending=True)    
+
+
+    # # LOG TRANSFORM KP
+    # M = np.log(M1+1)
+
 
     # # remove rows with less than 200 kp/day
     # M = M1[M1.sum(axis=1) > 200]
@@ -180,6 +188,7 @@ for file in all_files:
 #     keepWeeks = list(weekSums.loc[weekSums>10000].index)
 #     M = M1.loc[M1['weekNumber'].isin(keepWeeks)].drop(['weekNumber'], axis=1)
 
+    M = M1.copy()
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
     # days = rows
@@ -188,6 +197,10 @@ for file in all_files:
     M = np.array(M)
     n_days = M.shape[0]
     n_hrs = M.shape[1]
+
+    # if M.mean() <= 100:
+    #     print('mean KP too low')
+    #     continue
 
     # hard code adjacency matrix
     W = weighted_adjacency_matrix(M)
@@ -226,17 +239,42 @@ for file in all_files:
         'pca_x': X_pca[:, 0],
         'pca_y': X_pca[:, 1],
         'cluster': kmeans.labels_})
+    
+    # Visualize k-means clusters in PCA embedding
+    f, ax = plt.subplots()
+    sns.scatterplot(data=dfPCA, x='pca_x', y='pca_y', hue='cluster', ax=ax)
+    plt.show()
+    plt.clf()
+
+
+
+    n_bins = 4
+    b,bins,patches = plt.hist(x=dfPCA['pca_x'], bins=n_bins)
+    dfPCA['cluster_filt'] = np.where((dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2]), dfPCA['cluster'],np.nan)
+    # dfPCA.loc[(dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2])]
+    
+    # just plot of one matrix M
+    # f, ax = plt.subplots(nrows=1,ncols=1, sharex=False, sharey=True, figsize=(8,10))
+    # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
+
+
+
+
 
     # Visualize original data heatmap and heatmap with k-means cluster labels
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10))
+    # PLOT 1
     sns.heatmap(M, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 2
     sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 3
     sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # Reshape k-means cluster labels from 726d vector to 22x33
+
+    # PLOT 3    
     cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
@@ -248,18 +286,44 @@ for file in all_files:
     colorbar.set_ticks([0.25, 0.75])
     colorbar.set_ticklabels(['0', '1'])
     colorbar.set_label('Cluster')
+
+    # # PLOT 4
+    # cluster_mat = dfPCA['cluster_filt'].to_numpy().reshape(X.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom',
+    #     colors=['#de8f05', '#0173b2'],
+    #     N=2)
+    # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})
+    # colorbar = ax[1,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
+
+
     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
     ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
     ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
     ax[1,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     plt.show(f)
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
-    # break
     
+    break
+
 # print('finish')
+
+
+
+
+
+###############################################################################
+
+    
+
 
 #%%
 ###############################################################################
@@ -472,3 +536,9 @@ for file in all_files:
 
 
 # %%
+
+
+
+# plot pc1 vs pc2
+
+# then get i,j of each
