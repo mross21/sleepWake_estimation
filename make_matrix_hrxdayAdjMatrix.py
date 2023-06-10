@@ -13,6 +13,7 @@ import matplotlib as mpl
 # import copy
 # from sklearn.preprocessing import normalize
 # from sklearn.preprocessing import StandardScaler
+from chronobiology.chronobiology import CycleAnalyzer
 
 # sort files numerically
 numbers = re.compile(r'(\d+)')
@@ -239,7 +240,7 @@ for file in all_files:
 
     kp_values = np.array(M1).flatten()
     days_arr = np.repeat(range(n_days), n_hrs)
-    hrs_arr = list(range(n_hrs)) * n_days
+    hrs_arr = np.array(list(range(n_hrs)) * n_days)
     data = np.vstack((days_arr,hrs_arr, kp_values))
     B = csgraph.laplacian(W)
     H_star, W_star = regularized_svd(data, B, rank=1, alpha=0.1, as_sparse=False)
@@ -343,6 +344,22 @@ for file in all_files:
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
+
+
+
+
+
+
+######################################################
+## double plot
+
+    start_date = np.datetime64('2020-01-01')
+    ts = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+
+    ca = CycleAnalyzer(timestamps=ts, activity=kp_values, night=np.array([False]*len(ts)))
+
+
+
     
     break
 
