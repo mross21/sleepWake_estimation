@@ -294,34 +294,21 @@ for file in all_files:
 
 
 
-    # Visualize original data heatmap and heatmap with k-means cluster labels
-    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-                        figsize=(10,10))
-    # PLOT 1
-    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 3
-    sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # Visualize original data heatmap and heatmap with k-means cluster labels
+    # f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
+    #                     figsize=(10,10))
+    # # PLOT 1
+    # sns.heatmap(M1, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 2
+    # sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 3
+    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
-    # PLOT 3    
-    cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
-    cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom',
-        colors=['#de8f05', '#0173b2'],
-        N=2)
-    sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[1,1].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
-
-    # # PLOT 4
-    # cluster_mat = dfPCA['cluster_filt'].to_numpy().reshape(X.shape)
+    # # PLOT 3    
+    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
     # cmap = mpl.colors.LinearSegmentedColormap.from_list(
     #     'Custom',
     #     colors=['#de8f05', '#0173b2'],
@@ -333,19 +320,32 @@ for file in all_files:
     # colorbar.set_ticklabels(['0', '1'])
     # colorbar.set_label('Cluster')
 
+    # # # PLOT 4
+    # # cluster_mat = dfPCA['cluster_filt'].to_numpy().reshape(X.shape)
+    # # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    # #     'Custom',
+    # #     colors=['#de8f05', '#0173b2'],
+    # #     N=2)
+    # # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+    # #             cbar_kws={'fraction': 0.043})
+    # # colorbar = ax[1,1].collections[0].colorbar
+    # # colorbar.set_ticks([0.25, 0.75])
+    # # colorbar.set_ticklabels(['0', '1'])
+    # # colorbar.set_label('Cluster')
 
-    ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
-    ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    f.tight_layout()
-    plt.show(f)
-    # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
-    plt.close(f)
+
+    # ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
+    # ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # ax[1,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # f.tight_layout()
+    # plt.show(f)
+    # # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
+    # plt.close(f)
     
 
-    break
+    # break
 
 
 
@@ -364,22 +364,39 @@ for file in all_files:
 
 
 ## double plot
-#%%
-maxDay = dfM['day'].max()
-byDay = dfM.groupby('day')
-duplicatedDays = pd.DataFrame()
-for day, grp in byDay:
-    if day == 0:
-        duplicatedDays = duplicatedDays.append(grp)
-    elif day == maxDay:
-        duplicatedDays = duplicatedDays.append(grp)
-    else:
-        duplicatedDays = duplicatedDays.append(grp)
-        duplicatedDays = duplicatedDays.append(grp)
 
-row_len = int(len(duplicatedDays)/48)
 
-doublePlotData = duplicatedDays['keypresses'].to_numpy().reshape(row_len, 48)
+    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
+    dfActivity['activity_binary'] = np.where(dfActivity['nKP'] > 0, 1, 0)
+
+    dfKPActivity = dfActivity[['day','hour','activity_binary']]
+    maxDay = dfKPActivity['day'].max()
+    byDay = dfKPActivity.groupby('day')
+    duplicatedDays = pd.DataFrame()
+    for day, grp in byDay:
+        if day == 0:
+            duplicatedDays = duplicatedDays.append(grp)
+        elif day == maxDay:
+            duplicatedDays = duplicatedDays.append(grp)
+        else:
+            duplicatedDays = duplicatedDays.append(grp)
+            duplicatedDays = duplicatedDays.append(grp)
+
+    row_len = int(len(duplicatedDays)/48)
+
+    doublePlotData = duplicatedDays['activity_binary'].to_numpy().reshape(row_len, 48)
+
+
+    # just plot of one matrix M
+    f, ax = plt.subplots(figsize=(10,5))
+    sns.heatmap(doublePlotData, cmap='viridis', vmin=0, vmax=1,
+                    cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    ax.set(title='Double Plot', xlabel='Hour', ylabel='Day')
+
+    # plt.show()
+    pathDubPlot = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/HRxDAYsizeMat/doublePlots/'
+    plt.savefig(pathDubPlot + 'user_{}_binaryKPActivity.png'.format(user))
+    plt.clf()
 
 
     
