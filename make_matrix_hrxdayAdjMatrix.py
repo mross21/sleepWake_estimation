@@ -345,24 +345,45 @@ for file in all_files:
     plt.close(f)
     
 
-
+    break
 
 
 
 
 ######################################################
+# ## double plot
+
+#     start_date = np.datetime64('2020-01-01')
+#     ts = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+
+#     ca = CycleAnalyzer(timestamps=ts, activity=kp_values, night=np.array([False]*len(ts)), 
+#                        min_data_points=-1,max_gap='1h')
+
+#     ca.plot_actogram(log=True, activity_onset=False, height=20)
+
+
+
 ## double plot
+#%%
+maxDay = dfM['day'].max()
+byDay = dfM.groupby('day')
+duplicatedDays = pd.DataFrame()
+for day, grp in byDay:
+    if day == 0:
+        duplicatedDays = duplicatedDays.append(grp)
+    elif day == maxDay:
+        duplicatedDays = duplicatedDays.append(grp)
+    else:
+        duplicatedDays = duplicatedDays.append(grp)
+        duplicatedDays = duplicatedDays.append(grp)
 
-    start_date = np.datetime64('2020-01-01')
-    ts = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+row_len = int(len(duplicatedDays)/48)
 
-    ca = CycleAnalyzer(timestamps=ts, activity=kp_values, night=np.array([False]*len(ts)))
-
+doublePlotData = duplicatedDays['keypresses'].to_numpy().reshape(row_len, 48)
 
 
     
-    break
-
+    # break
 # print('finish')
 
 
