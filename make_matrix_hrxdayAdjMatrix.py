@@ -21,6 +21,13 @@ def numericalSort(value):
     parts[1::2] = map(int, parts[1::2])
     return(parts)
 
+def medianAAIKD(dataframe):
+    grpAA = dataframe.loc[((dataframe['keypress_type'] == 'alphanum') & 
+                                (dataframe['previousKeyType'] == 'alphanum'))]
+    # get median IKD
+    medAAIKD = np.nanmedian(grpAA['IKD']) if len(grpAA) >= 20 else float('NaN')
+    return(medAAIKD)
+
 def closest_hour(lst, K):
     return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
 
@@ -33,27 +40,27 @@ def hour_weight(h1,h2):
 def weighted_adjacency_matrix(mat):
     # days = rows
     # hours = columns
-    W = np.zeros((M.size, M.size))
-    for i in range(M.size):
-        for j in range(M.size):
+    W = np.zeros((mat.size, mat.size))
+    for i in range(mat.size):
+        for j in range(mat.size):
             # iterate across hours of each day then across days
             # d1h1, d1h2, d1h3, d1h4...d2h1, d2h2, d3h3...
-            i_Mi = i//M.shape[1]
-            i_Mj = i%M.shape[1]
-            j_Mi = j//M.shape[1]
-            j_Mj = j%M.shape[1]
+            i_Mi = i//mat.shape[1]
+            i_Mj = i%mat.shape[1]
+            j_Mi = j//mat.shape[1]
+            j_Mj = j%mat.shape[1]
             # diagonals
             if i == j:
                 W[i,j] = 0
             # if abs(subtraction of col indices) == 1 & subtraction of row indices == 0:
             elif (abs(j_Mj-i_Mj) == 1) & ((j_Mi-i_Mi) == 0):
-                W[i,j] = hour_weight(M[i_Mi,i_Mj],M[j_Mi,j_Mj])           
+                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])           
             # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
             elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
-                W[i,j] = day_weight(M[i_Mi,i_Mj],M[j_Mi,j_Mj])
+                W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
             # connect 23hr with 00hr
-            elif (i_Mj == M.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
-                W[i,j] = hour_weight(M[i_Mi,i_Mj],M[i_Mi+1,0])
+            elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
+                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
             else:
                 W[i,j] = 0
     return W
@@ -118,7 +125,6 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
         H_star = E_tilde  # Eq 15
         W_star = E_tilde.T @ X @ sp.linalg.inv(C)  # Eq 15
- 
     else:
         # Eq 11
         I = np.eye(B.shape[0])
@@ -142,8 +148,8 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    if user != 11:
-        continue
+    # if user != 11:
+    #     continue
 
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
     M1 = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
@@ -163,9 +169,35 @@ for file in all_files:
         M1.insert(h,h,[0]*M1.shape[0])
     M1 = M1.sort_index(ascending=True)    
 
+    Mspeed=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
+    Mspeed.columns = Mspeed.columns.droplevel(0)
+    for h in missingHours:
+        # M.loc[h] = [0]*M.shape[1] # to add row
+        Mspeed.insert(h,h,[np.nan]*Mspeed.shape[0])
+    Mspeed = Mspeed.sort_index(ascending=True)
 
+    
     # # LOG TRANSFORM KP
-    # M = np.log(M1+1)
+    # M2 = np.log(M1+1)
+# then look at filtering based on activity per week
+
+## not enough contrast between no kp activity and kp activity after normalization
+
+
+
+
+
+    # f, ax = plt.subplots(nrows=1,ncols=2, sharex=False, sharey=True,
+    #                     figsize=(12, 6))
+    # # PLOT 1
+    # sns.heatmap(M1, cmap='viridis', ax=ax[0], vmin=0, vmax=500,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # sns.heatmap(Mspeed, cmap='viridis', ax=ax[1],
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # plt.show()
+    # plt.clf()
+
+    
 
 
     # # remove rows with less than 200 kp/day
@@ -188,36 +220,36 @@ for file in all_files:
 #     keepWeeks = list(weekSums.loc[weekSums>10000].index)
 #     M = M1.loc[M1['weekNumber'].isin(keepWeeks)].drop(['weekNumber'], axis=1)
 
-    M = M1.copy()
+    # M = copy.deepcopy(M1)
     ###########################################################################
     # ADJACENCY MATRIX OF SIZE (DAYS X HRS) x (DAYS X HRS)
     # days = rows
     # hours = columns
 
-    M = np.array(M)
-    n_days = M.shape[0]
-    n_hrs = M.shape[1]
+    # M = np.array(M)
+    n_days = M1.shape[0]
+    n_hrs = M1.shape[1]
 
     # if M.mean() <= 100:
     #     print('mean KP too low')
     #     continue
 
     # hard code adjacency matrix
-    W = weighted_adjacency_matrix(M)
+    W = weighted_adjacency_matrix(np.array(M1))
 
-    kp_values = M.flatten()
+    kp_values = np.array(M1).flatten()
     days_arr = np.repeat(range(n_days), n_hrs)
     hrs_arr = list(range(n_hrs)) * n_days
-    X = np.vstack((days_arr,hrs_arr, kp_values)).T
+    data = np.vstack((days_arr,hrs_arr, kp_values))
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(X.T, B, rank=1, alpha=0.1, as_sparse=False)
+    H_star, W_star = regularized_svd(data, B, rank=1, alpha=0.1, as_sparse=False)
 
-    out2 = W_star.reshape(M.shape)
+    out2 = W_star.reshape(M1.shape)
     out2 = out2 * -1
     clip_amount = out2.max()/4
     cutoff = np.clip(out2, 0, clip_amount)
 
-    X = cutoff
+    X = out2 #cutoff
     n_hours = X.shape[1]
     n_days = X.shape[0]
 
@@ -240,22 +272,22 @@ for file in all_files:
         'pca_y': X_pca[:, 1],
         'cluster': kmeans.labels_})
     
-    # Visualize k-means clusters in PCA embedding
-    f, ax = plt.subplots()
-    sns.scatterplot(data=dfPCA, x='pca_x', y='pca_y', hue='cluster', ax=ax)
-    plt.show()
-    plt.clf()
+    # # Visualize k-means clusters in PCA embedding
+    # f, ax = plt.subplots()
+    # sns.scatterplot(data=dfPCA, x='pca_x', y='pca_y', hue='cluster', ax=ax)
+    # plt.show()
+    # plt.clf()
 
 
 
-    n_bins = 4
-    b,bins,patches = plt.hist(x=dfPCA['pca_x'], bins=n_bins)
-    dfPCA['cluster_filt'] = np.where((dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2]), dfPCA['cluster'],np.nan)
-    # dfPCA.loc[(dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2])]
+    # n_bins = 4
+    # b,bins,patches = plt.hist(x=dfPCA['pca_x'], bins=n_bins)
+    # dfPCA['cluster_filt'] = np.where((dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2]), dfPCA['cluster'],np.nan)
+    # # dfPCA.loc[(dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2])]
     
-    # just plot of one matrix M
-    # f, ax = plt.subplots(nrows=1,ncols=1, sharex=False, sharey=True, figsize=(8,10))
-    # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
+    # # just plot of one matrix M
+    # # f, ax = plt.subplots(nrows=1,ncols=1, sharex=False, sharey=True, figsize=(8,10))
+    # # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
 
 
 
@@ -265,10 +297,10 @@ for file in all_files:
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10))
     # PLOT 1
-    sns.heatmap(M, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 3
     sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
