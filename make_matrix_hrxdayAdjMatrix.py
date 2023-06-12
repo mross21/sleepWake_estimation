@@ -13,7 +13,9 @@ import matplotlib as mpl
 # import copy
 # from sklearn.preprocessing import normalize
 # from sklearn.preprocessing import StandardScaler
-from chronobiology.chronobiology import CycleAnalyzer
+# from chronobiology.chronobiology import CycleAnalyzer
+# from itertools import groupby
+
 
 # sort files numerically
 numbers = re.compile(r'(\d+)')
@@ -137,11 +139,12 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
-def sliding_window(elements, window_size):
+def sliding_window(elements, window_size, hr_gap):
     if len(elements) <= window_size:
        return elements
     windows = []
-    for i in range(len(elements)):
+    ls = np.arange(0, len(elements), hr_gap)
+    for i in ls:
         windows.append(elements[i:i+window_size])
     return windows
 
@@ -282,39 +285,6 @@ for file in all_files:
     n_hrs = M1.shape[1]
 
 
-    # M1 = Mbinary*1000
-
-# #############################################################
-
-#     # REGULAR SVD
-
-#     # days = rows
-#     # hours = columns
-
-#     # import numpy as np
-#     # import matplotlib.pyplot as plt
-
-#     print('before')
-#     plt.imshow(Mbinary)
-#     plt.show()
-
-#     # sig = (2/(1 + np.exp(-M)))-1
-#     # cutoff = np.clip(M, 0, 100)
-#     # print('after transformation')
-#     # plt.imshow(cutoff)
-#     # plt.show()
-
-#     u, s, vt  = np.linalg.svd(M1)
-#     S = np.diag(s)
-#     r=1
-#     svd_M = u[:, :r] @ S[0:r, :r] @ vt[:r, :]
-#     print('after')
-#     plt.imshow(svd_M)
-#     plt.show()
-# #############################################################
-
-
-
     # if M.mean() <= 100:
     #     print('mean KP too low')
     #     continue
@@ -335,8 +305,6 @@ for file in all_files:
     cutoff = np.clip(out2, 0, clip_amount)
 
     X = cutoff
-    n_hours = X.shape[1]
-    n_days = X.shape[0]
 
     # Reshape data into observations x features
     # Columns (features): [day, hour, keypresses]
@@ -375,6 +343,109 @@ for file in all_files:
     # # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
 
 
+###########################################################
+#   # replace islands with surrounding val
+
+
+    # make dataframe of day|hour|nKP|timestamo
+    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
+    date2 = pd.to_datetime(df['date']).drop_duplicates().nsmallest(2).max()
+    start_date = np.datetime64(date2, 'h')
+    dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+    dfActivity['cluster'] = dfPCA['cluster']
+    dateEnd = pd.to_datetime(df['date']).drop_duplicates().nlargest(2).iloc[-1]
+    end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
+
+
+    cluster_mat = dfPCA['cluster'].to_numpy().reshape(M1.shape)
+
+    # # make new var to update rows
+    # cluster_mat2 = copy.deepcopy(cluster_mat)
+
+    # # make df of labels by day and hr
+    # dfLabels = pd.DataFrame(cluster_mat2.T).melt(var_name='day', value_name='cluster')
+    # dfLabels['day'] = (pd.Series(np.arange(n_days))
+    #             .repeat(n_hours).reset_index(drop=True))+1
+    # dfLabels['hour'] = list(range(24))*n_days
+    # dfLabels = dfLabels[['day', 'hour', 'cluster']]
+
+    wake_label_idx = cluster_mat[0].argmax()
+    wake_label = cluster_mat[0,wake_label_idx]
+    sleep_label_idx = cluster_mat[0].argmin()
+    sleep_label = cluster_mat[0,sleep_label_idx]
+
+    if wake_label == sleep_label:
+        print('sleep and wake labels are the same')
+        break
+
+#########################################
+    # get median wake time
+    # makes assumption that min hour is wake up (and not night schedule)
+    wake_time = dfActivity.loc[dfActivity['cluster'] == wake_label]
+    median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
+
+    dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+    for obs in range(len(dfActivity)):
+        # print(obs)
+        if dfActivity['cluster_change_flag'].iloc[obs] == 1:
+            # get neighboring rows
+            neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
+                                    int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
+            if sum(neighbors['cluster_change_flag']) > 1:
+                # print(neighbors)
+                # if one cluster label diff from all others
+                surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
+                                    int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
+                                    (obs+3)))].value_counts().index[0]
+                dfActivity['cluster'].iloc[obs] = surroundingLabel
+                # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
+                #     dfActivity['cluster'].iloc[obs] = wake_label
+                # else:
+                #     dfActivity['cluster'].iloc[obs] = sleep_label
+                # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
+        # recalculate all change cluster labels
+        dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+#########################################
+
+    # break
+
+ #  # loop through sliding window of approx 30 hrs to search for largest blocks of 0/1
+    window_size = 30 #int(len(dfActivity)/28)
+    hr_space = 20
+    # windowList = np.array_split(dfActivity['timestamp'], window_size)
+    slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
+
+    dfConsecClusters = pd.DataFrame()
+    for window in slidingWindowList:
+        windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
+        ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
+        dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
+        try:
+            max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
+        except ValueError:
+            max0IdxList = []
+        try:
+            max1IdxList = max(dfIdx.loc[dfIdx['cluster'] == 1]['idx'], key=len)
+        except ValueError:
+            max1IdxList = []
+        # get the df info for indices
+        cluster0 = windowGrp.iloc[max0IdxList]
+        cluster1 = windowGrp.iloc[max1IdxList]
+        dfConsecClusters = dfConsecClusters.append((cluster0,cluster1))
+
+
+        # if len(dfConsecClusters) > 80:
+        #     break
+    # break
+
+    dfConsecClusters = dfConsecClusters.sort_values(by='timestamp').drop_duplicates(subset='timestamp')
+    dictClusterLabels = dict(zip(dfConsecClusters['timestamp'], dfConsecClusters['cluster']))
+    dfConsecClustersFilled = pd.DataFrame(dfActivity['timestamp'], columns = ['timestamp'])
+    dfConsecClustersFilled['cluster'] = dfConsecClustersFilled['timestamp'].map(dictClusterLabels)
+    dfConsecClustersFilled['day'] = dfActivity['day']
+    dfConsecClustersFilled['hour'] = dfActivity['hour']
+    # dfConsecClustersFilled['cluster2'] = dfConsecClustersFilled.groupby('day').apply(lambda x: x.loc['cluster'])
+    # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
 
 
 
@@ -385,98 +456,74 @@ for file in all_files:
     sns.heatmap(M1, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 3
-    sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-
-    # PLOT 3
+    # sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 3
+    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    
+    # PLOT 2
     cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
         colors=['#de8f05', '#0173b2'],
         N=2)
-    sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+    sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
                 cbar_kws={'fraction': 0.043})
+    colorbar = ax[0,1].collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['0', '1'])
+    colorbar.set_label('Cluster')
+
+    # PLOT 3
+    cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'Custom',
+        colors=['#de8f05', '#0173b2'],
+        N=2)
+    sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
+                cbar_kws={'fraction': 0.043})
+    colorbar = ax[1,0].collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['0', '1'])
+    colorbar.set_label('Cluster')
+
+    # PLOT 4
+    consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'Custom', colors=['#de8f05', '#0173b2'], N=2)
+    sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
+                cbar_kws={'fraction': 0.043})    
     colorbar = ax[1,1].collections[0].colorbar
     colorbar.set_ticks([0.25, 0.75])
     colorbar.set_ticklabels(['0', '1'])
     colorbar.set_label('Cluster')
 
-    # # PLOT 4
-    # cluster_mat = dfPCA['cluster_filt'].to_numpy().reshape(X.shape)
-    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-    #     'Custom',
-    #     colors=['#de8f05', '#0173b2'],
-    #     N=2)
-    # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
-    #             cbar_kws={'fraction': 0.043})
-    # colorbar = ax[1,1].collections[0].colorbar
-    # colorbar.set_ticks([0.25, 0.75])
-    # colorbar.set_ticklabels(['0', '1'])
-    # colorbar.set_label('Cluster')
-
 
     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
     ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[1,0].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     plt.show(f)
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
-
-
-    # make dataframe of day|hour|nKP|timestamo
-    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
-    start_date = np.datetime64(df['sessionTimestampLocal'].min(), 'h')
-    dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
-    dfActivity['cluster'] = dfPCA['cluster']
- #   # loop through sliding window of 36 hrs to search for largest blocks of 0/1
     
-    
-    from itertools import groupby
 
-
-    slidingWindowList = sliding_window(dfActivity['timestamp'], 36)
-    for window in slidingWindowList:
-        windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window)]
-
-
-        ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
-        dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
-        max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
-        max1IdxList = dfIdx.loc[dfIdx['cluster'] == 1]['idx'].max()
-
-
-        ### right now have the indices of largest consecutive 
-        # block in 36 hr windows for 0 and 1 cluster. need to join 2 lists 
-        # if they are very close together somehow
-
-        
+    if user == 3:
         break
 
-
-    break
-
+    # break
 
 
-# def get_longest_consecutive_val(grp, val):
-#     val_list = []
-#     for i in range(len(grp)+1):
 
-
-#         if grp.iloc[i]['cluster'] == val:
-#             val_list.append(i)
-#         else:
 
         
 
 
 
-#%%
+    #%%
 from itertools import groupby
  
 # initializing list
