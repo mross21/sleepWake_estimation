@@ -407,11 +407,25 @@ for file in all_files:
         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
 #########################################
 
-    # break
+
+#### need to remove islands
+
+
+
+
+
+
+
+
+
+
+
+
+
 
  #  # loop through sliding window of approx 30 hrs to search for largest blocks of 0/1
     window_size = 30 #int(len(dfActivity)/28)
-    hr_space = 20
+    hr_space = 8
     # windowList = np.array_split(dfActivity['timestamp'], window_size)
     slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
 
@@ -511,8 +525,8 @@ for file in all_files:
     plt.close(f)
     
 
-    if user == 3:
-        break
+    # if user == 3:
+    #     break
 
     # break
 
