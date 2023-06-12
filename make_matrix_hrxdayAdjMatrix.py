@@ -378,34 +378,34 @@ for file in all_files:
         print('sleep and wake labels are the same')
         break
 
-#########################################
-    # get median wake time
-    # makes assumption that min hour is wake up (and not night schedule)
-    wake_time = dfActivity.loc[dfActivity['cluster'] == wake_label]
-    median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
+# #########################################
+#     # get median wake time
+#     # makes assumption that min hour is wake up (and not night schedule)
+#     wake_time = dfActivity.loc[dfActivity['cluster'] == wake_label]
+#     median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
 
-    dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-    for obs in range(len(dfActivity)):
-        # print(obs)
-        if dfActivity['cluster_change_flag'].iloc[obs] == 1:
-            # get neighboring rows
-            neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
-                                    int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
-            if sum(neighbors['cluster_change_flag']) > 1:
-                # print(neighbors)
-                # if one cluster label diff from all others
-                surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
-                                    int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
-                                    (obs+3)))].value_counts().index[0]
-                dfActivity['cluster'].iloc[obs] = surroundingLabel
-                # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
-                #     dfActivity['cluster'].iloc[obs] = wake_label
-                # else:
-                #     dfActivity['cluster'].iloc[obs] = sleep_label
-                # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
-        # recalculate all change cluster labels
-        dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-#########################################
+#     dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+#     for obs in range(len(dfActivity)):
+#         # print(obs)
+#         if dfActivity['cluster_change_flag'].iloc[obs] == 1:
+#             # get neighboring rows
+#             neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
+#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
+#             if sum(neighbors['cluster_change_flag']) > 1:
+#                 # print(neighbors)
+#                 # if one cluster label diff from all others
+#                 surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
+#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
+#                                     (obs+3)))].value_counts().index[0]
+#                 dfActivity['cluster'].iloc[obs] = surroundingLabel
+#                 # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
+#                 #     dfActivity['cluster'].iloc[obs] = wake_label
+#                 # else:
+#                 #     dfActivity['cluster'].iloc[obs] = sleep_label
+#                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
+#         # recalculate all change cluster labels
+#         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+# #########################################
 
 
 #### need to remove islands
