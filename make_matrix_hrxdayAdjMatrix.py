@@ -1,7 +1,7 @@
 #%%
 import re
 import glob
-import pandas as pd 
+import pandas as pd
 from scipy.sparse import csgraph
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +23,7 @@ def numericalSort(value):
     return(parts)
 
 def medianAAIKD(dataframe):
-    grpAA = dataframe.loc[((dataframe['keypress_type'] == 'alphanum') & 
+    grpAA = dataframe.loc[((dataframe['keypress_type'] == 'alphanum') &
                                 (dataframe['previousKeyType'] == 'alphanum'))]
     # get median IKD
     medAAIKD = np.nanmedian(grpAA['IKD']) if len(grpAA) >= 20 else float('NaN')
@@ -55,7 +55,7 @@ def weighted_adjacency_matrix(mat):
                 W[i,j] = 0
             # if abs(subtraction of col indices) == 1 & subtraction of row indices == 0:
             elif (abs(j_Mj-i_Mj) == 1) & ((j_Mi-i_Mi) == 0):
-                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])           
+                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
             # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
             elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
                 W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
@@ -137,6 +137,14 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
+def sliding_window(elements, window_size):
+    if len(elements) <= window_size:
+       return elements
+    windows = []
+    for i in range(len(elements)):
+        windows.append(elements[i:i+window_size])
+    return windows
+
 ############################################################################################
 pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
 pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
@@ -161,22 +169,20 @@ for file in all_files:
     for h in missingHours:
         # M.loc[h] = [0]*M.shape[1] # to add row
         M1.insert(h,h,[0]*M1.shape[0])
-    M1 = M1.sort_index(ascending=True)    
-    
-    # insert days with no activity across all hours
-    missingDays = [d for d in range(1,df['dayNumber'].max()) if d not in list(M1.index)]
-    # M1.columns = M1.columns.droplevel(0)
-    for d in missingDays:
-        M1.loc[d] = [0]*M1.shape[1] # to add row
-        # M1.insert(d,d,[0]*M1.shape[1])
-    M1 = M1.sort_index(ascending=True)    
+    M1 = M1.sort_index(ascending=True)
 
     # find avg number of hours of activity/day
     Mbinary = np.where(M1 > 0, 1, 0)
     avgActivityPerDay = Mbinary.mean(axis=1).mean()
     print('avg n hours per day with typing activity: {}'.format(avgActivityPerDay))
 
-
+    # insert days with no activity across all hours
+    missingDays = [d for d in range(1,df['dayNumber'].max()) if d not in list(M1.index)]
+    # M1.columns = M1.columns.droplevel(0)
+    for d in missingDays:
+        M1.loc[d] = [0]*M1.shape[1] # to add row
+        # M1.insert(d,d,[0]*M1.shape[1])
+    M1 = M1.sort_index(ascending=True)
 
     # remove first and last days
     M1.drop([1,M1.shape[0]], axis=0, inplace=True)
@@ -188,16 +194,16 @@ for file in all_files:
         M1.drop(firstToDrop, axis=0, inplace=True)
     except KeyError:
         pass
-    lastIdx = M1.last_valid_index() 
+    lastIdx = M1.last_valid_index()
     lastToDrop = list(range(lastIdx+1,M1.index[-1]+1))
     M1.drop(lastToDrop, axis=0, inplace=True)
     M1=M1.replace(np.nan, 0)
 
 
-    
+
     Mbinary = np.where(M1 > 0, 1, 0)
 
-    
+
 
 
 
@@ -221,7 +227,7 @@ for file in all_files:
 
 
 
-    
+
     # # LOG TRANSFORM KP
     # M2 = np.log(M1+1)
 # then look at filtering based on activity per week
@@ -242,7 +248,7 @@ for file in all_files:
     # plt.show()
     # plt.clf()
 
-    
+
 
 
     # # remove rows with less than 200 kp/day
@@ -254,11 +260,11 @@ for file in all_files:
     # M2=M1.T
     # M2_scaled = pd.DataFrame(std_scaler.fit_transform(M2), columns=M2.columns)
     # M = M2_scaled.T #M1.div(M1.sum(axis=1), axis=0) #normalize(M1, axis=1, norm='l1')
-    
+
     # M = M1/M1.sum().sum()
 
 # # remove weeks with not enough data
-# # this doesn't make sense since large amounts of typing one hour out of 
+# # this doesn't make sense since large amounts of typing one hour out of
 # #   the week would skew the entire filtering
 #     M1['weekNumber']=np.arange(len(M1))//7
 #     weekSums = M1.groupby('weekNumber').sum().sum(axis=1)
@@ -276,7 +282,36 @@ for file in all_files:
     n_hrs = M1.shape[1]
 
 
-    M1 = Mbinary
+    # M1 = Mbinary*1000
+
+# #############################################################
+
+#     # REGULAR SVD
+
+#     # days = rows
+#     # hours = columns
+
+#     # import numpy as np
+#     # import matplotlib.pyplot as plt
+
+#     print('before')
+#     plt.imshow(Mbinary)
+#     plt.show()
+
+#     # sig = (2/(1 + np.exp(-M)))-1
+#     # cutoff = np.clip(M, 0, 100)
+#     # print('after transformation')
+#     # plt.imshow(cutoff)
+#     # plt.show()
+
+#     u, s, vt  = np.linalg.svd(M1)
+#     S = np.diag(s)
+#     r=1
+#     svd_M = u[:, :r] @ S[0:r, :r] @ vt[:r, :]
+#     print('after')
+#     plt.imshow(svd_M)
+#     plt.show()
+# #############################################################
 
 
 
@@ -312,7 +347,7 @@ for file in all_files:
     #             .repeat(n_hours).reset_index(drop=True))
     dfM['hour'] = list(range(24))*n_days
     dfM = dfM[['day', 'hour', 'keypresses']]  # rearrange columns
- 
+
     # Something simple for first approach: PCA
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(dfM.to_numpy())
@@ -321,7 +356,7 @@ for file in all_files:
         'pca_x': X_pca[:, 0],
         'pca_y': X_pca[:, 1],
         'cluster': kmeans.labels_})
-    
+
     # # Visualize k-means clusters in PCA embedding
     # f, ax = plt.subplots()
     # sns.scatterplot(data=dfPCA, x='pca_x', y='pca_y', hue='cluster', ax=ax)
@@ -334,7 +369,7 @@ for file in all_files:
     # b,bins,patches = plt.hist(x=dfPCA['pca_x'], bins=n_bins)
     # dfPCA['cluster_filt'] = np.where((dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2]), dfPCA['cluster'],np.nan)
     # # dfPCA.loc[(dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2])]
-    
+
     # # just plot of one matrix M
     # # f, ax = plt.subplots(nrows=1,ncols=1, sharex=False, sharey=True, figsize=(8,10))
     # # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
@@ -356,7 +391,7 @@ for file in all_files:
     sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
-    # PLOT 3    
+    # PLOT 3
     cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
@@ -392,9 +427,73 @@ for file in all_files:
     plt.show(f)
     # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
+
+
+    # make dataframe of day|hour|nKP|timestamo
+    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
+    start_date = np.datetime64(df['sessionTimestampLocal'].min(), 'h')
+    dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+    dfActivity['cluster'] = dfPCA['cluster']
+ #   # loop through sliding window of 36 hrs to search for largest blocks of 0/1
     
+    
+    from itertools import groupby
+
+
+    slidingWindowList = sliding_window(dfActivity['timestamp'], 36)
+    for window in slidingWindowList:
+        windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window)]
+
+
+        ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
+        dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
+        max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
+        max1IdxList = dfIdx.loc[dfIdx['cluster'] == 1]['idx'].max()
+
+
+        ### right now have the indices of largest consecutive 
+        # block in 36 hr windows for 0 and 1 cluster. need to join 2 lists 
+        # if they are very close together somehow
+
+        
+        break
+
 
     break
+
+
+
+# def get_longest_consecutive_val(grp, val):
+#     val_list = []
+#     for i in range(len(grp)+1):
+
+
+#         if grp.iloc[i]['cluster'] == val:
+#             val_list.append(i)
+#         else:
+
+        
+
+
+
+#%%
+from itertools import groupby
+ 
+# initializing list
+test_list = [1, 1, 1, 2, 2, 4, 2, 2, 5, 5, 5, 5]
+ 
+# printing original list
+print("The original list is : " + str(test_list))
+ 
+# Consecutive Maximum Occurrence in list
+# using groupby() + max() + lambda
+temp = groupby(test_list)
+res = idxmax(temp, key=lambda sub: len(list(sub[1])))
+
+print(res)
+
+#%%
+
 
 
 
@@ -405,7 +504,7 @@ for file in all_files:
 #     start_date = np.datetime64('2020-01-01')
 #     ts = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
 
-#     ca = CycleAnalyzer(timestamps=ts, activity=kp_values, night=np.array([False]*len(ts)), 
+#     ca = CycleAnalyzer(timestamps=ts, activity=kp_values, night=np.array([False]*len(ts)),
 #                        min_data_points=-1,max_gap='1h')
 
 #     ca.plot_actogram(log=True, activity_onset=False, height=20)
@@ -444,7 +543,7 @@ for file in all_files:
     # # pathDubPlot = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/HRxDAYsizeMat/doublePlots/'
     # # plt.savefig(pathDubPlot + 'user_{}_binaryKPActivity.png'.format(user))
     # plt.clf()
-    
+
 print('finish')
 
 
@@ -453,10 +552,10 @@ print('finish')
 
 ###############################################################################
 
-    
 
 
-i#%%
+
+#%%
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -500,7 +599,7 @@ i#%%
                 .repeat(n_hours).reset_index(drop=True))+1
     dfLabels['hour'] = list(range(24))*n_days
     dfLabels = dfLabels[['day', 'hour', 'cluster']]
-    
+
     # # fix cluster labels to be continuous for sleep or wake and remove isolated cluster labels
     # byDay = df.groupby(['dayNumber','hour'])
     # for dayHour, grp in byDay:
@@ -542,7 +641,7 @@ i#%%
         # print(obs)
         if dfLabels['cluster_change_flag'].iloc[obs] == 1:
             # get neighboring rows
-            neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) : 
+            neighbors = dfLabels.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
                                     int(np.where((obs+2) > len(dfLabels), len(dfLabels), (obs+2)))]
             if sum(neighbors['cluster_change_flag']) > 1:
                 print(neighbors)
@@ -569,7 +668,7 @@ i#%%
 
 
         # break
-    
+
 
 
 
@@ -612,7 +711,7 @@ i#%%
     colorbar.set_label('Cluster')
     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
     ax[0,1].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    
+
     ax[1,0].set(title='Replace Low KP Days', xlabel='Hour', ylabel='Day')
 
     ax[1,1].set(title='Filled In K-Means Clustering', xlabel='Hour', ylabel='Day')
@@ -631,11 +730,11 @@ i#%%
 
 
 
-        
 
-    
 
-    if user == 10: 
+
+
+    if user == 10:
         break
 
 
@@ -647,7 +746,7 @@ i#%%
 
 
 ### instead what if label all vals as wake_label after first wake_label detected
-    # for the rest of the day... 
+    # for the rest of the day...
     # instead of trying to fill in gaps for quick changes
 
 
