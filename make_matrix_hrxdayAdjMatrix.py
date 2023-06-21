@@ -691,16 +691,24 @@ G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False,
 
 # nx.draw_kamada_kawai(G)
 
-from pyvis.network import Network
-net = Network(
-    directed = True #,
-    # select_menu = True, # Show part 1 in the plot (optional)
-    # filter_menu = True, # Show part 2 in the plot (optional)
-)
-net.show_buttons() # Show part 3 in the plot (optional)
-net.from_nx(G) # Create directly from nx graph
-net.show('test.html')
+# # Interactive networkx plot
+# from pyvis.network import Network
+# net = Network(
+#     directed = True #,
+#     # select_menu = True, # Show part 1 in the plot (optional)
+#     # filter_menu = True, # Show part 2 in the plot (optional)
+# )
+# net.show_buttons() # Show part 3 in the plot (optional)
+# net.from_nx(G) # Create directly from nx graph
+# net.show('test.html')
 
+# # edge detection
+# from scipy import ndimage
+# x = ndimage.sobel(out2, axis=0, mode='constant')
+# y = ndimage.sobel(out2, axis=1, mode='constant')
+# Sobel = np.hypot(x, y)
+# plt.imshow(Sobel)
+# plt.show()
 
 #%%
 
