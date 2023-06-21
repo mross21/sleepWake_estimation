@@ -35,10 +35,10 @@ def closest_hour(lst, K):
     return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
 
 def day_weight(d1,d2):
-    return (d1+d2)
+    return (d1+d2)+.1
 
 def hour_weight(h1,h2):
-    return (h1+h2)/2
+    return ((h1+h2)/2)+.1
 
 def weighted_adjacency_matrix(mat):
     # days = rows
@@ -139,14 +139,106 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
-def sliding_window(elements, window_size, hr_gap):
-    if len(elements) <= window_size:
-       return elements
-    windows = []
-    ls = np.arange(0, len(elements), hr_gap)
-    for i in ls:
-        windows.append(elements[i:i+window_size])
-    return windows
+# def sliding_window(elements, window_size, hr_gap):
+#     if len(elements) <= window_size:
+#        return elements
+#     windows = []
+#     ls = np.arange(0, len(elements), hr_gap)
+#     for i in ls:
+#         windows.append(elements[i:i+window_size])
+#     return windows
+
+# # # A recursive function to replace
+# # # previous color 'prevC' at '(x, y)'
+# # # and all surrounding pixels of (x, y)
+# # # with new color 'newC' and
+# # def floodFillUtil(screen, x, y, prevC, newC, M, N):
+     
+# #     # Base cases
+# #     if (x < 0 or x >= M or y < 0 or
+# #         y >= N or screen[x][y] != prevC or
+# #         screen[x][y] == newC):
+# #         return
+ 
+# #     # Replace the color at (x, y)
+# #     screen[x][y] = newC
+ 
+# #     # Recur for north, east, south and west
+# #     floodFillUtil(screen, x + 1, y, prevC, newC)
+# #     floodFillUtil(screen, x - 1, y, prevC, newC)
+# #     floodFillUtil(screen, x, y + 1, prevC, newC)
+# #     floodFillUtil(screen, x, y - 1, prevC, newC)
+ 
+# # # It mainly finds the previous color on (x, y) and
+# # # calls floodFillUtil()
+# # def floodFill(screen, x, y, newC, M, N):
+# #     prevC = screen[x][y]
+# #     if(prevC==newC):
+# #       return
+# #     floodFillUtil(screen, x, y, prevC, newC, M, N)
+
+# # Size of given matrix is M x N
+# M = 6
+# N = 6
+ 
+# # A recursive function to replace previous
+# # value 'prevV' at '(x, y)' and all surrounding
+# # values of (x, y) with new value 'newV'.
+# def floodFillUtil(mat, x, y, prevV, newV):
+ 
+#     # Base Cases
+#     if (x < 0 or x >= M or y < 0 or y >= N):
+#         return
+ 
+#     if (mat[x][y] != prevV):
+#         return
+ 
+#     # Replace the color at (x, y)
+#     mat[x][y] = newV
+ 
+#     # Recur for north, east, south and west
+#     floodFillUtil(mat, x + 1, y, prevV, newV)
+#     floodFillUtil(mat, x - 1, y, prevV, newV)
+#     floodFillUtil(mat, x, y + 1, prevV, newV)
+#     floodFillUtil(mat, x, y - 1, prevV, newV)
+ 
+# # Returns size of maximum size subsquare
+# #  matrix surrounded by 'X'
+# def replaceSurrounded(mat, clusterM, M, N):
+ 
+#     # Step 1: Replace all '1's with '-'
+#     for i in range(M):
+#         for j in range(N):
+#             if (mat[i][j] == '1'):
+#                 clusterM[i][j] = '-'
+ 
+#     # Call floodFill for all '-'
+#     # lying on edges
+#     # Left Side
+#     for i in range(M):
+#         if (mat[i][0] == '-'):
+#             floodFillUtil(clusterM, i, 0, '-', 'O')
+     
+#     # Right side
+#     for i in range(M):
+#         if (mat[i][N - 1] == '-'):
+#             floodFillUtil(clusterM, i, N - 1, '-', 'O')
+     
+#     # Top side
+#     for i in range(N):
+#         if (mat[0][i] == '-'):
+#             floodFillUtil(clusterM, 0, i, '-', 'O')
+     
+#     # Bottom side
+#     for i in range(N):
+#         if (mat[M - 1][i] == '-'):
+#             floodFillUtil(clusterM, M - 1, i, '-', 'O')
+ 
+#     # Step 3: Replace all '-' with 'X'
+#     for i in range(M):
+#         for j in range(N):
+#             if (mat[i][j] == '-'):
+#                 clusterM[i][j] = 'X'
 
 ############################################################################################
 pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
@@ -160,7 +252,7 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user != 35:
+    # if user <= 99:
     #     continue
 
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
@@ -179,6 +271,37 @@ for file in all_files:
     avgActivityPerDay = Mbinary.mean(axis=1).mean()
     print('avg n hours per day with typing activity: {}'.format(avgActivityPerDay))
 
+    # of the days with kp, find median amount
+    Mkp = np.where(M1 > 0, M1, np.nan)
+    avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
+    print('median amount of kp overall: {}'.format(avgAmountPerDay))
+
+    if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
+        print('not enough data')
+        print('-----------------------------------------------')
+        continue
+
+    # remove first and last days
+    M1.drop([1,M1.shape[0]], axis=0, inplace=True)
+
+    # if less than 7 days, continue
+    if M1.shape[0] < 7:
+        print('not enough days')
+        continue
+
+    # # remove beginning and end days if all 0 kp activity
+    # M1=M1.replace(0, np.nan)
+    # firstIdx = M1.first_valid_index()
+    # firstToDrop = list(range(0,firstIdx))
+    # try:
+    #     M1.drop(firstToDrop, axis=0, inplace=True)
+    # except KeyError:
+    #     pass
+    # lastIdx = M1.last_valid_index()
+    # lastToDrop = list(range(lastIdx+1,M1.index[-1]+1))
+    # M1.drop(lastToDrop, axis=0, inplace=True)
+    # M1=M1.replace(np.nan, 0)
+
     # insert days with no activity across all hours
     missingDays = [d for d in range(1,df['dayNumber'].max()) if d not in list(M1.index)]
     # M1.columns = M1.columns.droplevel(0)
@@ -186,28 +309,6 @@ for file in all_files:
         M1.loc[d] = [0]*M1.shape[1] # to add row
         # M1.insert(d,d,[0]*M1.shape[1])
     M1 = M1.sort_index(ascending=True)
-
-    # remove first and last days
-    M1.drop([1,M1.shape[0]], axis=0, inplace=True)
-    # remove beginning and end days if all 0 kp activity
-    M1=M1.replace(0, np.nan)
-    firstIdx = M1.first_valid_index()
-    firstToDrop = list(range(0,firstIdx))
-    try:
-        M1.drop(firstToDrop, axis=0, inplace=True)
-    except KeyError:
-        pass
-    lastIdx = M1.last_valid_index()
-    lastToDrop = list(range(lastIdx+1,M1.index[-1]+1))
-    M1.drop(lastToDrop, axis=0, inplace=True)
-    M1=M1.replace(np.nan, 0)
-
-
-
-    Mbinary = np.where(M1 > 0, 1, 0)
-
-
-
 
 
     # # incorporate typing speed
@@ -218,9 +319,7 @@ for file in all_files:
     #     Mspeed.insert(h,h,[np.nan]*Mspeed.shape[0])
     # Mspeed = Mspeed.sort_index(ascending=True)
 
-    if M1.shape[0] < 7:
-        print('not enough days')
-        continue
+
     # medMax = M.max().median()
     # if medMax < 300:
     #     print('not enough kp per day')
@@ -301,36 +400,39 @@ for file in all_files:
 
     out2 = W_star.reshape(M1.shape)
     out2 = out2 * -1
-    clip_amount = out2.max()/4
+    clip_amount = out2.max()/10
     cutoff = np.clip(out2, 0, clip_amount)
 
-    X = cutoff
+    # X = cutoff
 
-    # Reshape data into observations x features
-    # Columns (features): [day, hour, keypresses]
-    # Rows (observations) of size (days*hours)
-    dfM = pd.DataFrame(X.T)
-    dfM = dfM.melt(var_name='day', value_name='keypresses')
-    # dfM['day'] = (pd.Series(np.arange(n_days))
-    #             .repeat(n_hours).reset_index(drop=True))
-    dfM['hour'] = list(range(24))*n_days
-    dfM = dfM[['day', 'hour', 'keypresses']]  # rearrange columns
+    # # Reshape data into observations x features
+    # # Columns (features): [day, hour, keypresses]
+    # # Rows (observations) of size (days*hours)
+    # dfM = pd.DataFrame(X.T)
+    # dfM = dfM.melt(var_name='day', value_name='keypresses')
+    # # dfM['day'] = (pd.Series(np.arange(n_days))
+    # #             .repeat(n_hours).reset_index(drop=True))
+    # dfM['hour'] = list(range(24))*n_days
+    # dfM = dfM[['day', 'hour', 'keypresses']]  # rearrange columns
 
-    # Something simple for first approach: PCA
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(dfM.to_numpy())
-    kmeans = KMeans(n_clusters=2, random_state=123).fit(X_pca)
-    dfPCA = pd.DataFrame({
-        'pca_x': X_pca[:, 0],
-        'pca_y': X_pca[:, 1],
+    # # Something simple for first approach: PCA
+    # pca = PCA(n_components=2)
+    # X_pca = pca.fit_transform(dfM.to_numpy())
+    dfWstar = pd.DataFrame(cutoff.reshape(-1,1), columns = ['vals'])
+    kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
+    dfKmeans = pd.DataFrame({
+        # 'pca_x': X_pca[:, 0],
+        # 'pca_y': X_pca[:, 1],
+        'graph_reg_SVD_vals': dfWstar['vals'],
         'cluster': kmeans.labels_})
+
+    dfPCA = dfKmeans
 
     # # Visualize k-means clusters in PCA embedding
     # f, ax = plt.subplots()
-    # sns.scatterplot(data=dfPCA, x='pca_x', y='pca_y', hue='cluster', ax=ax)
+    # sns.scatterplot(data=dfKmeans, x='pca_x', y='pca_y', hue='cluster', ax=ax)
     # plt.show()
     # plt.clf()
-
 
 
     # n_bins = 4
@@ -339,44 +441,48 @@ for file in all_files:
     # # dfPCA.loc[(dfPCA['pca_x'] <= bins[1]) | (dfPCA['pca_x'] >= bins[len(bins)-2])]
 
     # # just plot of one matrix M
-    # # f, ax = plt.subplots(nrows=1,ncols=1, sharex=False, sharey=True, figsize=(8,10))
-    # # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
+    # f, ax = plt.subplots(nrows=1,ncols=1, sharex=False, sharey=True, figsize=(8,10))
+    # sns.heatmap(M, cmap='viridis', vmin=0, vmax=500, cbar_kws{'label': '# keypresses', 'fraction': 0.043})
 
 
 ###########################################################
 #   # replace islands with surrounding val
 
 
-    # make dataframe of day|hour|nKP|timestamo
-    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
-    date2 = pd.to_datetime(df['date']).drop_duplicates().nsmallest(2).max()
-    start_date = np.datetime64(date2, 'h')
-    dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
-    dfActivity['cluster'] = dfPCA['cluster']
-    dateEnd = pd.to_datetime(df['date']).drop_duplicates().nlargest(2).iloc[-1]
-    end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
+    # # make dataframe of day|hour|nKP|timestamp
+    # dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
+    # date2 = pd.to_datetime(df['date']).drop_duplicates().nsmallest(2).max()
+    # start_date = np.datetime64(date2, 'h')
+    # dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+    # dfActivity['cluster'] = dfPCA['cluster']
+    # dateEnd = pd.to_datetime(df['date']).drop_duplicates().nlargest(2).iloc[-1]
+    # end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
 
 
-    cluster_mat = dfPCA['cluster'].to_numpy().reshape(M1.shape)
+    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    # plt.imshow(cluster_mat)
+    # plt.show()
 
-    # # make new var to update rows
-    # cluster_mat2 = copy.deepcopy(cluster_mat)
 
-    # # make df of labels by day and hr
-    # dfLabels = pd.DataFrame(cluster_mat2.T).melt(var_name='day', value_name='cluster')
-    # dfLabels['day'] = (pd.Series(np.arange(n_days))
-    #             .repeat(n_hours).reset_index(drop=True))+1
-    # dfLabels['hour'] = list(range(24))*n_days
-    # dfLabels = dfLabels[['day', 'hour', 'cluster']]
 
-    wake_label_idx = cluster_mat[0].argmax()
-    wake_label = cluster_mat[0,wake_label_idx]
-    sleep_label_idx = cluster_mat[0].argmin()
-    sleep_label = cluster_mat[0,sleep_label_idx]
+    # # # make new var to update rows
+    # # cluster_mat2 = copy.deepcopy(cluster_mat)
 
-    if wake_label == sleep_label:
-        print('sleep and wake labels are the same')
-        break
+    # # # make df of labels by day and hr
+    # # dfLabels = pd.DataFrame(cluster_mat2.T).melt(var_name='day', value_name='cluster')
+    # # dfLabels['day'] = (pd.Series(np.arange(n_days))
+    # #             .repeat(n_hours).reset_index(drop=True))+1
+    # # dfLabels['hour'] = list(range(24))*n_days
+    # # dfLabels = dfLabels[['day', 'hour', 'cluster']]
+
+    # wake_label_idx = cluster_mat[0].argmax()
+    # wake_label = cluster_mat[0,wake_label_idx]
+    # sleep_label_idx = cluster_mat[0].argmin()
+    # sleep_label = cluster_mat[0,sleep_label_idx]
+
+    # if wake_label == sleep_label:
+    #     print('sleep and wake labels are the same')
+    #     break
 
 # #########################################
 #     # get median wake time
@@ -405,10 +511,55 @@ for file in all_files:
 #                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
 #         # recalculate all change cluster labels
 #         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-# #########################################
+# # #########################################
 
 
-#### need to remove islands
+# #### need to remove islands
+
+# # Python3 program to implement
+# # flood fill algorithm
+#     dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+#     for obs in range(len(dfActivity)):
+#         # print(obs)
+#         if dfActivity['cluster_change_flag'].iloc[obs] == 1:
+#             # get neighboring rows
+#             neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
+#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
+#             if sum(neighbors['cluster_change_flag']) > 1:
+#                 # print(neighbors)
+#                 # if one cluster label diff from all others
+
+
+#                 surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
+#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
+#                                     (obs+3)))].value_counts().index[0]
+#                 dfActivity['cluster'].iloc[obs] = surroundingLabel
+#                 # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
+#                 #     dfActivity['cluster'].iloc[obs] = wake_label
+#                 # else:
+#                 #     dfActivity['cluster'].iloc[obs] = sleep_label
+#                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
+#         # recalculate all change cluster labels
+#         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+# # #########################################
+
+
+
+#     MchangeFlag = dfActivity['cluster_change_flag'].to_numpy().reshape(M1.shape)
+#     for i in range(n_days):
+#         for j in range(n_hrs):
+#             if MchangeFlag[i][j] == 1:
+#                 print(i,j)
+#                 print(cluster_mat[i][j])
+
+
+
+# # x = 4
+# # y = 4
+# # newC = 3
+# # floodFill(screen, x, y, newC, n_days, n_hrs)
+
+#     break
 
 
 
@@ -418,48 +569,43 @@ for file in all_files:
 
 
 
+#  #  # loop through sliding window of approx 30 hrs to search for largest blocks of 0/1
+#     window_size = 30 #int(len(dfActivity)/28)
+#     hr_space = 8
+#     # windowList = np.array_split(dfActivity['timestamp'], window_size)
+#     slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
+
+#     dfConsecClusters = pd.DataFrame()
+#     for window in slidingWindowList:
+#         windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
+#         ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
+#         dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
+#         try:
+#             max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
+#         except ValueError:
+#             max0IdxList = []
+#         try:
+#             max1IdxList = max(dfIdx.loc[dfIdx['cluster'] == 1]['idx'], key=len)
+#         except ValueError:
+#             max1IdxList = []
+#         # get the df info for indices
+#         cluster0 = windowGrp.iloc[max0IdxList]
+#         cluster1 = windowGrp.iloc[max1IdxList]
+#         dfConsecClusters = dfConsecClusters.append((cluster0,cluster1))
 
 
+#         # if len(dfConsecClusters) > 80:
+#         #     break
+#     # break
 
-
-
- #  # loop through sliding window of approx 30 hrs to search for largest blocks of 0/1
-    window_size = 30 #int(len(dfActivity)/28)
-    hr_space = 8
-    # windowList = np.array_split(dfActivity['timestamp'], window_size)
-    slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
-
-    dfConsecClusters = pd.DataFrame()
-    for window in slidingWindowList:
-        windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
-        ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
-        dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
-        try:
-            max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
-        except ValueError:
-            max0IdxList = []
-        try:
-            max1IdxList = max(dfIdx.loc[dfIdx['cluster'] == 1]['idx'], key=len)
-        except ValueError:
-            max1IdxList = []
-        # get the df info for indices
-        cluster0 = windowGrp.iloc[max0IdxList]
-        cluster1 = windowGrp.iloc[max1IdxList]
-        dfConsecClusters = dfConsecClusters.append((cluster0,cluster1))
-
-
-        # if len(dfConsecClusters) > 80:
-        #     break
-    # break
-
-    dfConsecClusters = dfConsecClusters.sort_values(by='timestamp').drop_duplicates(subset='timestamp')
-    dictClusterLabels = dict(zip(dfConsecClusters['timestamp'], dfConsecClusters['cluster']))
-    dfConsecClustersFilled = pd.DataFrame(dfActivity['timestamp'], columns = ['timestamp'])
-    dfConsecClustersFilled['cluster'] = dfConsecClustersFilled['timestamp'].map(dictClusterLabels)
-    dfConsecClustersFilled['day'] = dfActivity['day']
-    dfConsecClustersFilled['hour'] = dfActivity['hour']
-    # dfConsecClustersFilled['cluster2'] = dfConsecClustersFilled.groupby('day').apply(lambda x: x.loc['cluster'])
-    # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
+#     dfConsecClusters = dfConsecClusters.sort_values(by='timestamp').drop_duplicates(subset='timestamp')
+#     dictClusterLabels = dict(zip(dfConsecClusters['timestamp'], dfConsecClusters['cluster']))
+#     dfConsecClustersFilled = pd.DataFrame(dfActivity['timestamp'], columns = ['timestamp'])
+#     dfConsecClustersFilled['cluster'] = dfConsecClustersFilled['timestamp'].map(dictClusterLabels)
+#     dfConsecClustersFilled['day'] = dfActivity['day']
+#     dfConsecClustersFilled['hour'] = dfActivity['hour']
+#     # dfConsecClustersFilled['cluster2'] = dfConsecClustersFilled.groupby('day').apply(lambda x: x.loc['cluster'])
+#     # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
 
 
 
@@ -470,27 +616,28 @@ for file in all_files:
     sns.heatmap(M1, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    # sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # # PLOT 3
     # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
     #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     
-    # PLOT 2
-    cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
-    cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom',
-        colors=['#de8f05', '#0173b2'],
-        N=2)
-    sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[0,1].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
+    # # PLOT 2
+    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom',
+    #     colors=['#de8f05', '#0173b2'],
+    #     N=2)
+    # sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})
+    # colorbar = ax[0,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
 
     # PLOT 3
-    cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
         colors=['#de8f05', '#0173b2'],
@@ -503,15 +650,15 @@ for file in all_files:
     colorbar.set_label('Cluster')
 
     # PLOT 4
-    consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
-    cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom', colors=['#de8f05', '#0173b2'], N=2)
-    sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
-                cbar_kws={'fraction': 0.043})    
-    colorbar = ax[1,1].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
+    # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
+    # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})    
+    # colorbar = ax[1,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
 
 
     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
@@ -521,42 +668,73 @@ for file in all_files:
     ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     plt.show(f)
-    # f.savefig(pathOut+'HRxDAYsizeMat/user_{}_svd_PCA-kmeans.png'.format(user))
+    # f.savefig(pathOut+'HRxDAYsizeMat/largestComponent/user_{}_svd_PCA-kmeans.png'.format(user))
     plt.close(f)
     
 
-    # if user == 3:
+    # if user >= 22:
     #     break
 
-    # break
+    break
+    
 
+#%%
+# normalized cuts
 
+import networkx as nx
 
+adjSVD = weighted_adjacency_matrix(out2)
+adjSVD_upper = np.triu(adjSVD, k=0)
+adjSVD_lower = np.tril(adjSVD, k=0)
+G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False, 
+                         create_using=nx.DiGraph())
 
-        
+# nx.draw_kamada_kawai(G)
 
+from pyvis.network import Network
+net = Network(
+    directed = True #,
+    # select_menu = True, # Show part 1 in the plot (optional)
+    # filter_menu = True, # Show part 2 in the plot (optional)
+)
+net.show_buttons() # Show part 3 in the plot (optional)
+net.from_nx(G) # Create directly from nx graph
+net.show('test.html')
 
-
-    #%%
-from itertools import groupby
- 
-# initializing list
-test_list = [1, 1, 1, 2, 2, 4, 2, 2, 5, 5, 5, 5]
- 
-# printing original list
-print("The original list is : " + str(test_list))
- 
-# Consecutive Maximum Occurrence in list
-# using groupby() + max() + lambda
-temp = groupby(test_list)
-res = idxmax(temp, key=lambda sub: len(list(sub[1])))
-
-print(res)
 
 #%%
 
+# indices of max and min
+maxSVD = np.argmax(out2)
+minSVD = np.argmin(out2)
+# source vertex
+S = maxSVD
+# sink vertex
+T = minSVD
+
+cut_value, partition = nx.minimum_cut(G, S, T)
+reachable, non_reachable = partition
 
 
+
+#%%
+
+# # Second smallest eigenvector from graph laplacian
+
+# adj_M = weighted_adjacency_matrix(out2)
+# L = csgraph.laplacian(adj_M)
+# eigen_values, eigen_vectors = np.linalg.eig(L)
+
+# idx = eigen_values.argsort()[::-1]   
+# eigenValues = np.real(eigen_values[idx])
+# eigenVectors = np.real(eigen_vectors[:,idx])
+
+# binEig2 = np.where(eigenVectors[-2] > np.mean(eigenVectors[-2]), 1, -1)
+
+# plt.imshow(binEig2.reshape(out2.shape))
+
+
+#%%
 
 
 ######################################################
@@ -824,12 +1002,3 @@ print('finish')
 
 
     print('==========================================')
-
-
-# %%
-
-
-
-# plot pc1 vs pc2
-
-# then get i,j of each
