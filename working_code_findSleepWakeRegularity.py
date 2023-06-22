@@ -35,10 +35,10 @@ def closest_hour(lst, K):
     return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
 
 def day_weight(d1,d2):
-    return (d1+d2)+.1
+    return (d1+d2) #1/(abs(d1-d2)+.0000001)
 
 def hour_weight(h1,h2):
-    return ((h1+h2)/2)+.1
+    return (h1+h2)/2 #1/(abs(h1-h2)+.0000001)
 
 def weighted_adjacency_matrix(mat):
     # days = rows
@@ -64,6 +64,40 @@ def weighted_adjacency_matrix(mat):
             # connect 23hr with 00hr
             elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
                 W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
+            else:
+                W[i,j] = 0
+    return W
+
+def day_weight2(d1,d2):
+    return 1/(abs(d1-d2)+.0000001)
+
+def hour_weight2(h1,h2):
+    return 1/(abs(h1-h2)+.0000001)
+
+def weighted_adjacency_matrix2(mat):
+    # days = rows
+    # hours = columns
+    W = np.zeros((mat.size, mat.size))
+    for i in range(mat.size):
+        for j in range(mat.size):
+            # iterate across hours of each day then across days
+            # d1h1, d1h2, d1h3, d1h4...d2h1, d2h2, d3h3...
+            i_Mi = i//mat.shape[1]
+            i_Mj = i%mat.shape[1]
+            j_Mi = j//mat.shape[1]
+            j_Mj = j%mat.shape[1]
+            # diagonals
+            if i == j:
+                W[i,j] = 0
+            # if abs(subtraction of col indices) == 1 & subtraction of row indices == 0:
+            elif (abs(j_Mj-i_Mj) == 1) & ((j_Mi-i_Mi) == 0):
+                W[i,j] = hour_weight2(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
+            # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
+            elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
+                W[i,j] = day_weight2(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
+            # connect 23hr with 00hr
+            elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
+                W[i,j] = hour_weight2(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
             else:
                 W[i,j] = 0
     return W
@@ -138,6 +172,20 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         H_star = E_tilde  # Eq 15
         W_star = E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
+
+
+def cosine_similarity(a,b):
+    from numpy.linalg import norm
+    cosine = np.dot(a,b)/(norm(a)*norm(b))
+    return cosine
+
+def get_regularity(mat, day_diff):
+    sim_list = []
+    for d in range(mat.shape[0]):
+        if d < mat.shape[0]-day_diff:
+            sim = cosine_similarity(mat[d], mat[d+day_diff])
+            sim_list.append(sim)
+    return sim_list
 
 # def sliding_window(elements, window_size, hr_gap):
 #     if len(elements) <= window_size:
@@ -252,7 +300,7 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user <= 99:
+    # if user <= 80:
     #     continue
 
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
@@ -282,7 +330,8 @@ for file in all_files:
         continue
 
     # remove first and last days
-    M1.drop([1,M1.shape[0]], axis=0, inplace=True)
+    # M1.drop([1,M1.shape[0]], axis=0, inplace=True)
+    M1 = M1[1:-1]
 
     # if less than 7 days, continue
     if M1.shape[0] < 7:
@@ -302,14 +351,15 @@ for file in all_files:
     # M1.drop(lastToDrop, axis=0, inplace=True)
     # M1=M1.replace(np.nan, 0)
 
-    # insert days with no activity across all hours
-    missingDays = [d for d in range(1,df['dayNumber'].max()) if d not in list(M1.index)]
-    # M1.columns = M1.columns.droplevel(0)
-    for d in missingDays:
-        M1.loc[d] = [0]*M1.shape[1] # to add row
-        # M1.insert(d,d,[0]*M1.shape[1])
-    M1 = M1.sort_index(ascending=True)
-
+# ###############################
+#     # insert days with no activity across all hours
+#     missingDays = [d for d in range(1,df['dayNumber'].max()) if d not in list(M1.index)]
+#     # M1.columns = M1.columns.droplevel(0)
+#     for d in missingDays:
+#         M1.loc[d] = [0]*M1.shape[1] # to add row
+#         # M1.insert(d,d,[0]*M1.shape[1])
+#     M1 = M1.sort_index(ascending=True)
+# ####################################
 
     # # incorporate typing speed
     # Mspeed=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
@@ -608,82 +658,125 @@ for file in all_files:
 #     # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
 
 
-
-    # Visualize original data heatmap and heatmap with k-means cluster labels
-    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-                        figsize=(10,10))
-    # PLOT 1
-    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], #vmin=0, vmax=500,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], #vmin=0, vmax=200,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # # PLOT 3
-    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+#############################################################
+    # # Visualize original data heatmap and heatmap with k-means cluster labels
+    # f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
+    #                     figsize=(10,10))
+    # # PLOT 1
+    # sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
     #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    
     # # PLOT 2
-    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
+    # sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # # PLOT 3
+    # # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+    # #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    
+    # # # PLOT 2
+    # # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
+    # # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    # #     'Custom',
+    # #     colors=['#de8f05', '#0173b2'],
+    # #     N=2)
+    # # sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
+    # #             cbar_kws={'fraction': 0.043})
+    # # colorbar = ax[0,1].collections[0].colorbar
+    # # colorbar.set_ticks([0.25, 0.75])
+    # # colorbar.set_ticklabels(['0', '1'])
+    # # colorbar.set_label('Cluster')
+
+    # # PLOT 3
+    # # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
     # cmap = mpl.colors.LinearSegmentedColormap.from_list(
     #     'Custom',
     #     colors=['#de8f05', '#0173b2'],
     #     N=2)
-    # sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
+    # sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
     #             cbar_kws={'fraction': 0.043})
-    # colorbar = ax[0,1].collections[0].colorbar
+    # colorbar = ax[1,0].collections[0].colorbar
     # colorbar.set_ticks([0.25, 0.75])
     # colorbar.set_ticklabels(['0', '1'])
     # colorbar.set_label('Cluster')
 
-    # PLOT 3
-    # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
-    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
-    cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom',
-        colors=['#de8f05', '#0173b2'],
-        N=2)
-    sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[1,0].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
-
-    # PLOT 4
-    # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
-    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-    #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
-    # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
-    #             cbar_kws={'fraction': 0.043})    
-    # colorbar = ax[1,1].collections[0].colorbar
-    # colorbar.set_ticks([0.25, 0.75])
-    # colorbar.set_ticklabels(['0', '1'])
-    # colorbar.set_label('Cluster')
+    # # PLOT 4
+    # # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
+    # # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    # #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
+    # # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
+    # #             cbar_kws={'fraction': 0.043})    
+    # # colorbar = ax[1,1].collections[0].colorbar
+    # # colorbar.set_ticks([0.25, 0.75])
+    # # colorbar.set_ticklabels(['0', '1'])
+    # # colorbar.set_label('Cluster')
 
 
-    ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
-    ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
+    # ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # f.tight_layout()
+    # plt.show(f)
+    # # f.savefig(pathOut+'HRxDAYsizeMat/largestComponent/user_{}_svd_PCA-kmeans.png'.format(user))
+    # plt.close(f)
+##############################################################
+
+    # # if user >= 22:
+    # #     break
+
+    # break
+
+    # Visualize original data heatmap and heatmap with k-means cluster labels
+    f, ax = plt.subplots(nrows=1,ncols=2, sharex=False, sharey=True,
+                        figsize=(10,5))
+    # PLOT 1
+    sns.heatmap(M1, cmap='viridis', ax=ax[0], vmin=0, vmax=500,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 2
+    sns.heatmap(out2, cmap='viridis', ax=ax[1], vmin=0, vmax=200,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+
+    ax[0].set(title='Original', xlabel='Hour', ylabel='Day')
+    ax[1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
     f.tight_layout()
-    plt.show(f)
-    # f.savefig(pathOut+'HRxDAYsizeMat/largestComponent/user_{}_svd_PCA-kmeans.png'.format(user))
+    # plt.show(f)
+    f.savefig(pathOut+'HRxDAYsizeMat/SVD/user_{}_graphRegSVD.png'.format(user))
     plt.close(f)
-    
 
-    # if user >= 22:
-    #     break
 
-    break
+    # calculate regularity
+
+
+    diff1 = get_regularity(out2, 1)
+    diff2 = get_regularity(out2, 2)
+    diff3 = get_regularity(out2, 3)
+    diff4 = get_regularity(out2, 4)
+    diff5 = get_regularity(out2, 5)
+    diff6 = get_regularity(out2, 6)
+    diff7 = get_regularity(out2, 7)
+    dfRegularity = pd.DataFrame([diff1,diff2,diff3,diff4,
+                                diff5,diff6,diff7]).T
+    dfRegularity.columns = [1,2,3,4,5,6,7]
     
+    fig, axes = plt.subplots(figsize=(5,5))
+    sns.set(style="whitegrid")
+    sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity'.format(user))
+    plt.xlabel('Days Apart')
+    plt.ylabel('Cosine Similarity')
+    # plt.ylim([0, 1])
+    # plt.show()
+    plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/user_{}_regularity.png'.format(user))
+    plt.clf()
+
+    # break
 
 #%%
 # normalized cuts
 
 import networkx as nx
 
-adjSVD = weighted_adjacency_matrix(out2)
+adjSVD = weighted_adjacency_matrix2(out2)
 adjSVD_upper = np.triu(adjSVD, k=0)
 adjSVD_lower = np.tril(adjSVD, k=0)
 G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False, 
@@ -710,15 +803,14 @@ G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False,
 # plt.imshow(Sobel)
 # plt.show()
 
-#%%
 
 # indices of max and min
 maxSVD = np.argmax(out2)
 minSVD = np.argmin(out2)
-# source vertex
-S = maxSVD
 # sink vertex
-T = minSVD
+T = maxSVD
+# source vertex
+S = minSVD
 
 cut_value, partition = nx.minimum_cut(G, S, T)
 reachable, non_reachable = partition
@@ -729,17 +821,17 @@ reachable, non_reachable = partition
 
 # # Second smallest eigenvector from graph laplacian
 
-# adj_M = weighted_adjacency_matrix(out2)
-# L = csgraph.laplacian(adj_M)
-# eigen_values, eigen_vectors = np.linalg.eig(L)
+adj_M = weighted_adjacency_matrix2(out2)
+L = csgraph.laplacian(adj_M)
+eigen_values, eigen_vectors = np.linalg.eig(L)
 
-# idx = eigen_values.argsort()[::-1]   
-# eigenValues = np.real(eigen_values[idx])
-# eigenVectors = np.real(eigen_vectors[:,idx])
+idx = eigen_values.argsort()[::-1]   
+eigenValues = np.real(eigen_values[idx])
+eigenVectors = np.real(eigen_vectors[:,idx])
 
-# binEig2 = np.where(eigenVectors[-2] > np.mean(eigenVectors[-2]), 1, -1)
+binEig2 = np.where(eigenVectors[-2] > 0, 1, -1)
 
-# plt.imshow(binEig2.reshape(out2.shape))
+plt.imshow(binEig2.reshape(out2.shape))
 
 
 #%%
