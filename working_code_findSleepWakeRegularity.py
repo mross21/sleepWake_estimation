@@ -741,7 +741,7 @@ for file in all_files:
     ax[1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     # plt.show(f)
-    f.savefig(pathOut+'HRxDAYsizeMat/SVD/user_{}_graphRegSVD.png'.format(user))
+    # f.savefig(pathOut+'HRxDAYsizeMat/SVD/user_{}_graphRegSVD.png'.format(user))
     plt.close(f)
 
 
@@ -764,7 +764,7 @@ for file in all_files:
     sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity'.format(user))
     plt.xlabel('Days Apart')
     plt.ylabel('Cosine Similarity')
-    # plt.ylim([0, 1])
+    plt.ylim([0, 1])
     # plt.show()
     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/user_{}_regularity.png'.format(user))
     plt.clf()
