@@ -291,6 +291,9 @@ def get_regularity(mat, day_diff):
 ############################################################################################
 pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
 pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
+fileDiag = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/diagnosis/unmasck_demographics.csv'
+dfDiag = pd.read_csv(fileDiag, index_col=False)
+dictDiag = dict(zip(dfDiag['healthCode'], dfDiag['diagnosis']))
 
 # list of user accel files
 all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
@@ -302,6 +305,9 @@ for file in all_files:
 
     # if user <= 80:
     #     continue
+
+    df['diagnosis'] = df['healthCode'].map(dictDiag)
+    diag = df['diagnosis'].iloc[0]
 
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
     M1 = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
@@ -761,15 +767,15 @@ for file in all_files:
     
     fig, axes = plt.subplots(figsize=(5,5))
     sns.set(style="whitegrid")
-    sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity'.format(user))
+    sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity ({})'.format(user, diag))
     plt.xlabel('Days Apart')
     plt.ylabel('Cosine Similarity')
     plt.ylim([0, 1])
-    # plt.show()
-    plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/user_{}_regularity.png'.format(user))
+    plt.show()
+    # plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/user_{}_regularity.png'.format(user))
     plt.clf()
 
-    # break
+    break
 
 #%%
 # normalized cuts

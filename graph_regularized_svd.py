@@ -183,14 +183,18 @@ def get_regularity(mat, day_diff):
 ############################################################################################
 pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
 pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
+fileDiag = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/diagnosis/unmasck_demographics.csv'
+dfDiag = pd.read_csv(fileDiag, index_col=False)
+dictDiag = dict(zip(dfDiag['healthCode'], dfDiag['diagnosis']))
 
-# list of user accel files
+# list of user kp files
 all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
-
 for file in all_files:
     df = pd.read_csv(file, index_col=False)
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
+
+    df['diagnosis'] = df['healthCode'].map(dictDiag)
 
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
     M1 = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
@@ -295,4 +299,4 @@ for file in all_files:
     # plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/user_{}_regularity.png'.format(user))
     plt.clf()
 
-  
+# %%
