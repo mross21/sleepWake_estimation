@@ -767,15 +767,21 @@ for file in all_files:
     
     fig, axes = plt.subplots(figsize=(5,5))
     sns.set(style="whitegrid")
-    sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity ({})'.format(user, diag))
+    sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity (Diagnosis: {})'.format(user, diag))
     plt.xlabel('Days Apart')
     plt.ylabel('Cosine Similarity')
     plt.ylim([0, 1])
-    plt.show()
-    # plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/user_{}_regularity.png'.format(user))
+    # plt.show()
+    print(diag)
+    if diag == 'HC':
+        plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/HC/user_{}_regularity.png'.format(user))
+    elif diag == 'MD':
+        plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/MD/user_{}_regularity.png'.format(user))
+    else:
+        plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/nan/user_{}_regularity.png'.format(user))
     plt.clf()
 
-    break
+    # break
 
 #%%
 # normalized cuts
