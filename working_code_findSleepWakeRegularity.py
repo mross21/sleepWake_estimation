@@ -306,6 +306,7 @@ for file in all_files:
     # if user <= 80:
     #     continue
 
+    df['healthCode'] = df['healthCode'].str.lower()
     df['diagnosis'] = df['healthCode'].map(dictDiag)
     diag = df['diagnosis'].iloc[0]
 
