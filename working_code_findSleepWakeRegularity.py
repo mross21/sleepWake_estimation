@@ -68,13 +68,13 @@ def weighted_adjacency_matrix(mat):
                 W[i,j] = 0
     return W
 
-def day_weight2(d1,d2):
+def day_weight_SVD(d1,d2):
     return 1/(abs(d1-d2)+.0000001)
 
-def hour_weight2(h1,h2):
+def hour_weight_SVD(h1,h2):
     return 1/(abs(h1-h2)+.0000001)
 
-def weighted_adjacency_matrix2(mat):
+def weighted_adjacency_SVD_matrix(mat):
     # days = rows
     # hours = columns
     W = np.zeros((mat.size, mat.size))
@@ -91,13 +91,13 @@ def weighted_adjacency_matrix2(mat):
                 W[i,j] = 0
             # if abs(subtraction of col indices) == 1 & subtraction of row indices == 0:
             elif (abs(j_Mj-i_Mj) == 1) & ((j_Mi-i_Mi) == 0):
-                W[i,j] = hour_weight2(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
+                W[i,j] = hour_weight_SVD(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
             # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
             elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
-                W[i,j] = day_weight2(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
+                W[i,j] = day_weight_SVD(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
             # connect 23hr with 00hr
             elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
-                W[i,j] = hour_weight2(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
+                W[i,j] = hour_weight_SVD(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
             else:
                 W[i,j] = 0
     return W
@@ -186,6 +186,9 @@ def get_regularity(mat, day_diff):
             sim = cosine_similarity(mat[d], mat[d+day_diff])
             sim_list.append(sim)
     return sim_list
+
+def simple_threshold(im, threshold):
+    return ((im > threshold) * 255).astype("uint8")
 
 # def sliding_window(elements, window_size, hr_gap):
 #     if len(elements) <= window_size:
@@ -781,28 +784,46 @@ for file in all_files:
     # plt.clf()
 
 
-    polar_ls = []
-    for d in range(n_days):
-        r = d
-        theta = np.linspace(0, 2*np.pi, 24) 
-        polar_ls.append(([r]*24,theta,out2[d]))
-        area = 200 * r**2
-        colors = theta
+    # polar_ls = []
+    # for d in range(n_days):
+    #     r = d
+    #     theta = np.linspace(0, 2*np.pi, 24) 
+    #     polar_ls.append(([r]*24,theta,out2[d]))
+    #     area = 200 * r**2
+    #     colors = theta
 
-    dfPolar = pd.DataFrame(polar_ls, columns=['r','theta','intensity']).explode(['r','theta','intensity'])
-    fig, ax = plt.subplots(figsize=(8,5))
-    ax = plt.subplot(111, projection='polar')
-    ax.set_xticklabels(['0', '', '6', '', '12', '', '18', ''])
-    ax.set_theta_offset(np.pi/2)
-    ax.set_theta_direction(-1)
-    c=ax.scatter(dfPolar['theta'], dfPolar['r'], c=dfPolar['intensity'], s=5, 
-                cmap='viridis', alpha=1, vmin=0, vmax=200)
-    plt.colorbar(c, ax=ax)
+    # dfPolar = pd.DataFrame(polar_ls, columns=['r','theta','intensity']).explode(['r','theta','intensity'])
+    # fig, ax = plt.subplots(figsize=(8,5))
+    # ax = plt.subplot(111, projection='polar')
+    # ax.set_xticklabels(['0', '', '6', '', '12', '', '18', ''])
+    # ax.set_theta_offset(np.pi/2)
+    # ax.set_theta_direction(-1)
+    # c=ax.scatter(dfPolar['theta'], dfPolar['r'], c=dfPolar['intensity'], s=5, 
+    #             cmap='viridis', alpha=1, vmin=0, vmax=200)
+    # plt.colorbar(c, ax=ax)
     # plt.show()
-    plt.savefig(pathOut + 'HRxDAYsizeMat/polarPlots/user_{}_regularity.png'.format(user))
-    plt.clf()
+    # # plt.savefig(pathOut + 'HRxDAYsizeMat/polarPlots/user_{}_regularity.png'.format(user))
+    # plt.clf()
 
-    # break
+    p = out2.max()/4
+    p2 = out2.max()/3
+    p3 = out2.max()/5
+    p4 = out2.max()/6
+    p5 = out2.max()/10
+
+    thresholds = [p5,p4,p3,p,p2]
+
+    fig, axs = plt.subplots(nrows=1, ncols=len(thresholds), figsize=(20,5))
+    gray_im = out2
+                            
+    for t, ax in zip(thresholds, axs):
+        ax.imshow(simple_threshold(gray_im, t), cmap='Greys')
+        ax.set_title("Threshold: {}".format(t), fontsize=20)
+        ax.set_axis_off()
+    plt.show()
+
+    if user >=10:
+        break
 
 
 #%%
@@ -810,7 +831,7 @@ for file in all_files:
 
 import networkx as nx
 
-adjSVD = weighted_adjacency_matrix2(out2)
+adjSVD = weighted_adjacency_SVD_matrix(out2)
 adjSVD_upper = np.triu(adjSVD, k=0)
 adjSVD_lower = np.tril(adjSVD, k=0)
 G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False, 
@@ -834,20 +855,22 @@ G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False,
 # x = ndimage.sobel(out2, axis=0, mode='constant')
 # y = ndimage.sobel(out2, axis=1, mode='constant')
 # Sobel = np.hypot(x, y)
-# plt.imshow(Sobel)
+# plt.imshow(Sobel, cmap='viridis')
 # plt.show()
 
 
-# indices of max and min
-maxSVD = np.argmax(out2)
-minSVD = np.argmin(out2)
-# sink vertex
-T = maxSVD
-# source vertex
-S = minSVD
+# # indices of max and min
+# maxSVD = np.argmax(out2)
+# minSVD = np.argmin(out2)
+# # sink vertex
+# T = maxSVD
+# # source vertex
+# S = minSVD
 
-cut_value, partition = nx.minimum_cut(G, S, T)
-reachable, non_reachable = partition
+# cut_value, partition = nx.minimum_cut(G, S, T)
+# reachable, non_reachable = partition
+
+
 
 
 
