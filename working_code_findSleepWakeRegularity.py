@@ -805,25 +805,28 @@ for file in all_files:
     # # plt.savefig(pathOut + 'HRxDAYsizeMat/polarPlots/user_{}_regularity.png'.format(user))
     # plt.clf()
 
-    p = out2.max()/4
-    p2 = out2.max()/3
-    p3 = out2.max()/5
-    p4 = out2.max()/6
-    p5 = out2.max()/10
+# image threshold for image segmentation
+    # p = out2.max()/4
+    # p2 = out2.max()/3
+    # p3 = out2.max()/5
+    # p4 = out2.max()/6
+    # p5 = out2.max()/10
 
-    thresholds = [p5,p4,p3,p,p2]
+    # thresholds = [p5,p4,p3,p,p2]
 
-    fig, axs = plt.subplots(nrows=1, ncols=len(thresholds), figsize=(20,5))
-    gray_im = out2
+    # fig, axs = plt.subplots(nrows=1, ncols=len(thresholds), figsize=(20,5))
+    # gray_im = out2
                             
-    for t, ax in zip(thresholds, axs):
-        ax.imshow(simple_threshold(gray_im, t), cmap='Greys')
-        ax.set_title("Threshold: {}".format(t), fontsize=20)
-        ax.set_axis_off()
-    plt.show()
+    # for t, ax in zip(thresholds, axs):
+    #     ax.imshow(simple_threshold(gray_im, t), cmap='Greys')
+    #     ax.set_title("Threshold: {}".format(t), fontsize=20)
+    #     ax.set_axis_off()
+    # plt.show()
 
-    if user >=10:
-        break
+    # if user >=10:
+    #     break
+
+    break
 
 
 #%%
@@ -859,19 +862,44 @@ G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False,
 # plt.show()
 
 
-# # indices of max and min
-# maxSVD = np.argmax(out2)
-# minSVD = np.argmin(out2)
-# # sink vertex
-# T = maxSVD
-# # source vertex
-# S = minSVD
+# indices of max and min
+maxSVD = np.argmax(out2)
+minSVD = np.argmin(out2)
+# sink vertex
+T = maxSVD
+# source vertex
+S = minSVD
 
-# cut_value, partition = nx.minimum_cut(G, S, T)
-# reachable, non_reachable = partition
+cut_value, partition = nx.minimum_cut(G, S, T, capacity='weight')
+reachable, non_reachable = partition
 
+#%%
+from skimage import data, segmentation, color
+from skimage import graph, filters
 
+img = out2
 
+# labels1 = segmentation.slic(img, compactness=30, n_segments=400)
+labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
+edge_map = filters.sobel(img)
+rag = graph.rag_boundary(labels, edge_map)
+# out1 = color.label2rgb(labels1, img, kind='avg', bg_label=0)
+
+# g = graph.rag_mean_color(img, labels1, mode='similarity')
+# labels2 = graph.cut_normalized(labels1, g)
+
+# # out3 = color.label2rgb(labels2, img, kind='avg', bg_label=0)
+
+# fig, ax = plt.subplots(nrows=2, sharex=True, sharey=True, figsize=(6, 8))
+
+# ax[0].imshow(out1)
+# ax[1].imshow(out3)
+
+# for a in ax:
+#     a.axis('off')
+
+# plt.tight_layout()
+# plt.show()
 
 
 #%%
