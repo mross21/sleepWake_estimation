@@ -734,76 +734,75 @@ for file in all_files:
 
     # break
 
-    # Visualize original data heatmap and heatmap with k-means cluster labels
-    f, ax = plt.subplots(nrows=1,ncols=2, sharex=False, sharey=True,
-                        figsize=(10,5))
-    # PLOT 1
-    sns.heatmap(M1, cmap='viridis', ax=ax[0], vmin=0, vmax=500,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[1], vmin=0, vmax=200,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # Visualize original data heatmap and heatmap with k-means cluster labels
+    # f, ax = plt.subplots(nrows=1,ncols=2, sharex=False, sharey=True,
+    #                     figsize=(10,5))
+    # # PLOT 1
+    # sns.heatmap(M1, cmap='viridis', ax=ax[0], vmin=0, vmax=500,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 2
+    # sns.heatmap(out2, cmap='viridis', ax=ax[1], vmin=0, vmax=200,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
-    ax[0].set(title='Original', xlabel='Hour', ylabel='Day')
-    ax[1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    f.tight_layout()
-    # plt.show(f)
-    # f.savefig(pathOut+'HRxDAYsizeMat/SVD/user_{}_graphRegSVD.png'.format(user))
-    plt.close(f)
-
-
-    # calculate regularity
+    # ax[0].set(title='Original', xlabel='Hour', ylabel='Day')
+    # ax[1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # f.tight_layout()
+    # # plt.show(f)
+    # # f.savefig(pathOut+'HRxDAYsizeMat/SVD/user_{}_graphRegSVD.png'.format(user))
+    # plt.close(f)
 
 
-    diff1 = get_regularity(out2, 1)
-    diff2 = get_regularity(out2, 2)
-    diff3 = get_regularity(out2, 3)
-    diff4 = get_regularity(out2, 4)
-    diff5 = get_regularity(out2, 5)
-    diff6 = get_regularity(out2, 6)
-    diff7 = get_regularity(out2, 7)
-    dfRegularity = pd.DataFrame([diff1,diff2,diff3,diff4,
-                                diff5,diff6,diff7]).T
-    dfRegularity.columns = [1,2,3,4,5,6,7]
+    # # calculate regularity
+    # diff1 = get_regularity(out2, 1)
+    # diff2 = get_regularity(out2, 2)
+    # diff3 = get_regularity(out2, 3)
+    # diff4 = get_regularity(out2, 4)
+    # diff5 = get_regularity(out2, 5)
+    # diff6 = get_regularity(out2, 6)
+    # diff7 = get_regularity(out2, 7)
+    # dfRegularity = pd.DataFrame([diff1,diff2,diff3,diff4,
+    #                             diff5,diff6,diff7]).T
+    # dfRegularity.columns = [1,2,3,4,5,6,7]
     
-    fig, axes = plt.subplots(figsize=(5,5))
-    sns.set(style="whitegrid")
-    sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity (Diagnosis: {})'.format(user, diag))
-    plt.xlabel('Days Apart')
-    plt.ylabel('Cosine Similarity')
-    plt.ylim([0, 1])
-    plt.show()
-    # print(diag)
-    # if diag == 'HC':
-    #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/HC/user_{}_regularity.png'.format(user))
-    # elif diag == 'MD':
-    #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/MD/user_{}_regularity.png'.format(user))
-    # else:
-    #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/nan/user_{}_regularity.png'.format(user))
+    # fig, axes = plt.subplots(figsize=(5,5))
+    # sns.set(style="whitegrid")
+    # sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity (Diagnosis: {})'.format(user, diag))
+    # plt.xlabel('Days Apart')
+    # plt.ylabel('Cosine Similarity')
+    # plt.ylim([0, 1])
+    # plt.show()
+    # # print(diag)
+    # # if diag == 'HC':
+    # #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/HC/user_{}_regularity.png'.format(user))
+    # # elif diag == 'MD':
+    # #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/MD/user_{}_regularity.png'.format(user))
+    # # else:
+    # #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/nan/user_{}_regularity.png'.format(user))
+    # plt.clf()
+
+
+    polar_ls = []
+    for d in range(n_days):
+        r = d
+        theta = np.linspace(0, 2*np.pi, 24) 
+        polar_ls.append(([r]*24,theta,out2[d]))
+        area = 200 * r**2
+        colors = theta
+
+    dfPolar = pd.DataFrame(polar_ls, columns=['r','theta','intensity']).explode(['r','theta','intensity'])
+    fig, ax = plt.subplots(figsize=(8,5))
+    ax = plt.subplot(111, projection='polar')
+    ax.set_xticklabels(['0', '', '6', '', '12', '', '18', ''])
+    ax.set_theta_offset(np.pi/2)
+    ax.set_theta_direction(-1)
+    c=ax.scatter(dfPolar['theta'], dfPolar['r'], c=dfPolar['intensity'], s=5, 
+                cmap='viridis', alpha=1, vmin=0, vmax=200)
+    plt.colorbar(c, ax=ax)
+    # plt.show()
+    plt.savefig(pathOut + 'HRxDAYsizeMat/polarPlots/user_{}_regularity.png'.format(user))
     plt.clf()
 
-    break
-
-#%%
-
-
-# Compute areas and colors
-polar_ls = []
-for d in range(n_days):
-    r = d
-    theta = np.linspace(0, 2*np.pi, 24) 
-    polar_ls.append(([r]*24,theta,out2[d]))
-    area = 200 * r**2
-    colors = theta
-
-dfPolar = pd.DataFrame(polar_ls, columns=['r','theta','intensity']).explode(['r','theta','intensity'])
-ax = plt.subplot(111, projection='polar')
-ax.set_xticklabels(['0', '', '6', '', '12', '', '18', ''])
-ax.set_theta_offset(np.pi/2)
-ax.set_theta_direction(-1)
-c = ax.scatter(dfPolar['theta'], dfPolar['r'], c=dfPolar['intensity'], s=5, 
-               cmap='viridis', alpha=0.75)
-plt.show()
+    # break
 
 
 #%%
