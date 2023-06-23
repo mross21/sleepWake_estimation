@@ -772,17 +772,39 @@ for file in all_files:
     plt.xlabel('Days Apart')
     plt.ylabel('Cosine Similarity')
     plt.ylim([0, 1])
-    # plt.show()
-    print(diag)
-    if diag == 'HC':
-        plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/HC/user_{}_regularity.png'.format(user))
-    elif diag == 'MD':
-        plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/MD/user_{}_regularity.png'.format(user))
-    else:
-        plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/nan/user_{}_regularity.png'.format(user))
+    plt.show()
+    # print(diag)
+    # if diag == 'HC':
+    #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/HC/user_{}_regularity.png'.format(user))
+    # elif diag == 'MD':
+    #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/MD/user_{}_regularity.png'.format(user))
+    # else:
+    #     plt.savefig(pathOut + 'HRxDAYsizeMat/regularity/nan/user_{}_regularity.png'.format(user))
     plt.clf()
 
-    # break
+    break
+
+#%%
+
+
+# Compute areas and colors
+polar_ls = []
+for d in range(n_days):
+    r = d
+    theta = np.linspace(0, 2*np.pi, 24) 
+    polar_ls.append(([r]*24,theta,out2[d]))
+    area = 200 * r**2
+    colors = theta
+
+dfPolar = pd.DataFrame(polar_ls, columns=['r','theta','intensity']).explode(['r','theta','intensity'])
+ax = plt.subplot(111, projection='polar')
+ax.set_xticklabels(['0', '', '6', '', '12', '', '18', ''])
+ax.set_theta_offset(np.pi/2)
+ax.set_theta_direction(-1)
+c = ax.scatter(dfPolar['theta'], dfPolar['r'], c=dfPolar['intensity'], s=5, 
+               cmap='viridis', alpha=0.75)
+plt.show()
+
 
 #%%
 # normalized cuts
