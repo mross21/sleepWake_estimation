@@ -306,8 +306,8 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user <= 80:
-    #     continue
+    if user != 11:
+        continue
 
     df['healthCode'] = df['healthCode'].str.lower()
     df['diagnosis'] = df['healthCode'].map(dictDiag)
@@ -840,7 +840,7 @@ adjSVD_lower = np.tril(adjSVD, k=0)
 G = nx.from_numpy_matrix(np.array(adjSVD_upper), parallel_edges=False, 
                          create_using=nx.DiGraph())
 
-# nx.draw_kamada_kawai(G)
+nx.draw_kamada_kawai(G)
 
 # # Interactive networkx plot
 # from pyvis.network import Network
@@ -873,20 +873,22 @@ S = minSVD
 cut_value, partition = nx.minimum_cut(G, S, T, capacity='weight')
 reachable, non_reachable = partition
 
+
+
+
 #%%
-from skimage import data, segmentation, color
-from skimage import graph, filters
+from skimage import future, filters, io
 
 img = out2
 
 # labels1 = segmentation.slic(img, compactness=30, n_segments=400)
 labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
-edge_map = filters.sobel(img)
-rag = graph.rag_boundary(labels, edge_map, connectivity = 2)
-# out1 = color.label2rgb(labels1, img, kind='avg', bg_label=0)
+edge_map = filters.sobel(labels)
+labs2 = np.where(edge_map > 0, 1, 0)
+# rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
+# print(future.graph.cut_normalized(labels, rag))
 
-# g = graph.rag_mean_color(img, labels1, mode='similarity')
-# labels2 = graph.cut_normalized(labels1, g)
+
 
 # # out3 = color.label2rgb(labels2, img, kind='avg', bg_label=0)
 
@@ -901,12 +903,28 @@ rag = graph.rag_boundary(labels, edge_map, connectivity = 2)
 # plt.tight_layout()
 # plt.show()
 
+#%%
+
+from skimage import data, segmentation, future
+img = data.astronaut()
+labels = segmentation.slic(img)
+rag = future.graph.rag_mean_color(img, labels, mode='similarity')
+new_labels = future.graph.cut_normalized(labels, rag)
+
+#%%
+
+from skimage import data
+from skimage import filters
+# camera = data.camera()
+val = filters.threshold_otsu(out2)
+mask = out2 < val
+plt.imshow(mask)
 
 #%%
 
 # # Second smallest eigenvector from graph laplacian
 
-adj_M = weighted_adjacency_matrix2(out2)
+adj_M = weighted_adjacency_SVD_matrix(out2)
 L = csgraph.laplacian(adj_M)
 eigen_values, eigen_vectors = np.linalg.eig(L)
 
