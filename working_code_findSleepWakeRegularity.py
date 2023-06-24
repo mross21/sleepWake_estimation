@@ -882,7 +882,7 @@ img = out2
 # labels1 = segmentation.slic(img, compactness=30, n_segments=400)
 labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
 edge_map = filters.sobel(img)
-rag = graph.rag_boundary(labels, edge_map)
+rag = graph.rag_boundary(labels, edge_map, connectivity = 2)
 # out1 = color.label2rgb(labels1, img, kind='avg', bg_label=0)
 
 # g = graph.rag_mean_color(img, labels1, mode='similarity')
