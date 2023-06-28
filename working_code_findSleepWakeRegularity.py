@@ -306,8 +306,8 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    if user != 11:
-        continue
+    # if user != 11:
+    #     continue
 
     df['healthCode'] = df['healthCode'].str.lower()
     df['diagnosis'] = df['healthCode'].map(dictDiag)
@@ -669,31 +669,32 @@ for file in all_files:
 
 
 #############################################################
-    # # Visualize original data heatmap and heatmap with k-means cluster labels
-    # f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-    #                     figsize=(10,10))
-    # # PLOT 1
-    # sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+    # Visualize original data heatmap and heatmap with k-means cluster labels
+    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
+                        figsize=(10,10))
+    # PLOT 1
+    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 2
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 3
+    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
     #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # # PLOT 2
-    # sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # # # PLOT 3
-    # # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
-    # #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     
-    # # # PLOT 2
-    # # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
-    # # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-    # #     'Custom',
-    # #     colors=['#de8f05', '#0173b2'],
-    # #     N=2)
-    # # sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
-    # #             cbar_kws={'fraction': 0.043})
-    # # colorbar = ax[0,1].collections[0].colorbar
-    # # colorbar.set_ticks([0.25, 0.75])
-    # # colorbar.set_ticklabels(['0', '1'])
-    # # colorbar.set_label('Cluster')
+    ax[1,0].hist(out2.flatten(), bins=100)
+    # # PLOT 2
+    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom',
+    #     colors=['#de8f05', '#0173b2'],
+    #     N=2)
+    # sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})
+    # colorbar = ax[0,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
 
     # # PLOT 3
     # # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
@@ -709,27 +710,28 @@ for file in all_files:
     # colorbar.set_ticklabels(['0', '1'])
     # colorbar.set_label('Cluster')
 
-    # # PLOT 4
-    # # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
-    # # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-    # #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
-    # # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
-    # #             cbar_kws={'fraction': 0.043})    
-    # # colorbar = ax[1,1].collections[0].colorbar
-    # # colorbar.set_ticks([0.25, 0.75])
-    # # colorbar.set_ticklabels(['0', '1'])
-    # # colorbar.set_label('Cluster')
+    # PLOT 4
+    # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
+    # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})    
+    # colorbar = ax[1,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
 
 
-    # ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
-    # ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
+    ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
     # ax[1,0].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
     # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
-    # f.tight_layout()
+    f.tight_layout()
     # plt.show(f)
-    # # f.savefig(pathOut+'HRxDAYsizeMat/largestComponent/user_{}_svd_PCA-kmeans.png'.format(user))
-    # plt.close(f)
+    f.savefig(pathOut+'HRxDAYsizeMat/histograms/user_{}_bins100.png'.format(user))
+    plt.close(f)
+    # break
 ##############################################################
 
     # # if user >= 22:
@@ -823,10 +825,10 @@ for file in all_files:
     #     ax.set_axis_off()
     # plt.show()
 
-    # if user >=10:
+    # if user >=25:
     #     break
 
-    break
+    # break
 
 
 #%%
@@ -873,7 +875,7 @@ S = minSVD
 cut_value, partition = nx.minimum_cut(G, S, T, capacity='weight')
 reachable, non_reachable = partition
 
-
+otherLabs = np.where(out2.flatten().index.isin(reachable), 1, 0)
 
 
 #%%
@@ -885,8 +887,8 @@ img = out2
 labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
 edge_map = filters.sobel(labels)
 labs2 = np.where(edge_map > 0, 1, 0)
-# rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
-# print(future.graph.cut_normalized(labels, rag))
+rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
+print(future.graph.cut_normalized(labels, rag))
 
 
 
