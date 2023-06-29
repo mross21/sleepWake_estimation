@@ -10,6 +10,9 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import seaborn as sns
 import matplotlib as mpl
+from scipy import stats
+from datetime import datetime
+
 # import copy
 # from sklearn.preprocessing import normalize
 # from sklearn.preprocessing import StandardScaler
@@ -306,7 +309,7 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user != 11:
+    # if user != 115:
     #     continue
 
     df['healthCode'] = df['healthCode'].str.lower()
@@ -339,6 +342,7 @@ for file in all_files:
         print('-----------------------------------------------')
         continue
 
+
     # remove first and last days
     # M1.drop([1,M1.shape[0]], axis=0, inplace=True)
     M1 = M1[1:-1]
@@ -360,16 +364,16 @@ for file in all_files:
     # lastToDrop = list(range(lastIdx+1,M1.index[-1]+1))
     # M1.drop(lastToDrop, axis=0, inplace=True)
     # M1=M1.replace(np.nan, 0)
-
-# ###############################
-#     # insert days with no activity across all hours
-#     missingDays = [d for d in range(1,df['dayNumber'].max()) if d not in list(M1.index)]
-#     # M1.columns = M1.columns.droplevel(0)
-#     for d in missingDays:
-#         M1.loc[d] = [0]*M1.shape[1] # to add row
-#         # M1.insert(d,d,[0]*M1.shape[1])
-#     M1 = M1.sort_index(ascending=True)
-# ####################################
+    
+###############################
+    # # insert days with no activity across all hours
+    # missingDays = [d for d in range(M1.index[0],M1.index[-1]) if d not in list(M1.index)]
+    # # M1.columns = M1.columns.droplevel(0)
+    # for d in missingDays:
+    #     M1.loc[d] = [0]*M1.shape[1] # to add row
+    #     # M1.insert(d,d,[0]*M1.shape[1])
+    # M1 = M1.sort_index(ascending=True)
+####################################
 
     # # incorporate typing speed
     # Mspeed=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
@@ -460,8 +464,13 @@ for file in all_files:
 
     out2 = W_star.reshape(M1.shape)
     out2 = out2 * -1
-    clip_amount = out2.max()/10
+    clip_amount = out2.max()/4
     cutoff = np.clip(out2, 0, clip_amount)
+
+    ## Circular variance/mean
+    circVarList = np.apply_along_axis(stats.circvar, 1, out2)
+    circMeanList = np.apply_along_axis(stats.circmean, 1, out2)
+
 
     # X = cutoff
 
@@ -485,6 +494,9 @@ for file in all_files:
         # 'pca_y': X_pca[:, 1],
         'graph_reg_SVD_vals': dfWstar['vals'],
         'cluster': kmeans.labels_})
+    
+    dfKmeans['day'] = (pd.Series(np.arange(n_days))
+                .repeat(n_hrs).reset_index(drop=True))
 
     dfPCA = dfKmeans
 
@@ -519,7 +531,7 @@ for file in all_files:
     # end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
 
 
-    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
     # plt.imshow(cluster_mat)
     # plt.show()
 
@@ -534,15 +546,48 @@ for file in all_files:
     # #             .repeat(n_hours).reset_index(drop=True))+1
     # # dfLabels['hour'] = list(range(24))*n_days
     # # dfLabels = dfLabels[['day', 'hour', 'cluster']]
+    
+    # find sleep and wake labels
+    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    m = np.array(M1)
+    # get mean matrix value for each label
+    i0,j0=np.where(cluster_mat==0)
+    vals0 = m[i0,j0]
+    median0 = np.mean(vals0)
+    i1,j1=np.where(cluster_mat==1)
+    vals1 = m[i1,j1]
+    median1 = np.mean(vals1)
+    # assign lower value to sleep
+    sleep_label = np.where(median0 < median1, 0, 1)
+    wake_label = np.where(median0 > median1, 0, 1)
+
 
     # wake_label_idx = cluster_mat[0].argmax()
     # wake_label = cluster_mat[0,wake_label_idx]
     # sleep_label_idx = cluster_mat[0].argmin()
     # sleep_label = cluster_mat[0,sleep_label_idx]
-
     # if wake_label == sleep_label:
     #     print('sleep and wake labels are the same')
     #     break
+
+
+## find # of hours of no activity
+
+    noActivityAmt = dfKmeans.groupby('day').apply(lambda x: x[x['cluster'] == sleep_label].shape[0])
+
+
+    dates = pd.date_range(df['date'].unique()[1], periods=n_days).tolist()
+    
+
+    dfCircReg = pd.DataFrame()
+    dfCircReg['date'] = dates
+    dfCircReg['circvar'] = circVarList
+    dfCircReg['circmean'] = circMeanList
+    dfCircReg['amount_noActivity'] = noActivityAmt
+    
+    
+
+
 
 # #########################################
 #     # get median wake time
@@ -678,11 +723,11 @@ for file in all_files:
     # PLOT 2
     sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # # PLOT 3
-    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 3
+    sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     
-    ax[1,0].hist(out2.flatten(), bins=100)
+    # ax[1,0].hist(out2.flatten(), bins=100)
     # # PLOT 2
     # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
     # cmap = mpl.colors.LinearSegmentedColormap.from_list(
@@ -696,19 +741,19 @@ for file in all_files:
     # colorbar.set_ticklabels(['0', '1'])
     # colorbar.set_label('Cluster')
 
-    # # PLOT 3
-    # # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
-    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
-    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-    #     'Custom',
-    #     colors=['#de8f05', '#0173b2'],
-    #     N=2)
-    # sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
-    #             cbar_kws={'fraction': 0.043})
-    # colorbar = ax[1,0].collections[0].colorbar
-    # colorbar.set_ticks([0.25, 0.75])
-    # colorbar.set_ticklabels(['0', '1'])
-    # colorbar.set_label('Cluster')
+    # PLOT 3
+    # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'Custom',
+        colors=['#de8f05', '#0173b2'],
+        N=2)
+    sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+                cbar_kws={'fraction': 0.043})
+    colorbar = ax[1,1].collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['0', '1'])
+    colorbar.set_label('Cluster')
 
     # PLOT 4
     # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
@@ -724,15 +769,15 @@ for file in all_files:
 
     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
     ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # ax[1,0].set(title='K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
     # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     # plt.show(f)
-    f.savefig(pathOut+'HRxDAYsizeMat/histograms/user_{}_bins100.png'.format(user))
+    f.savefig(pathOut+'user_{}_SVD_kmeans-missingDaysSkipped.png'.format(user))
     plt.close(f)
     # break
-##############################################################
+#############################################################
 
     # # if user >= 22:
     # #     break
@@ -830,6 +875,22 @@ for file in all_files:
 
     # break
 
+#%%
+
+# circular variance plots
+
+fig, (left, right) = plt.subplots(ncols=2)
+for image in (left, right):
+    image.plot(np.cos(np.linspace(0, 2*np.pi, 500)),
+               np.sin(np.linspace(0, 2*np.pi, 500)),
+               c='k')
+    image.axis('equal')
+    image.axis('off')
+left.scatter(np.cos(out2[0]), np.sin(out2[0]), c='k', s=15)
+left.set_title(f"circular variance: {np.round(scipy.stats.circvar(out2[0]), 2)!r}")
+right.scatter(np.cos(out2[1]), np.sin(out2[1]), c='k', s=15)
+right.set_title(f"circular variance: {np.round(scipy.stats.circvar(out2[1]), 2)!r}")
+plt.show()
 
 #%%
 # normalized cuts
