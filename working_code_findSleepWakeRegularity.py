@@ -723,9 +723,9 @@ for file in all_files:
     # PLOT 2
     sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 3
-    sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 3
+    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     
     # ax[1,0].hist(out2.flatten(), bins=100)
     # # PLOT 2
@@ -741,19 +741,29 @@ for file in all_files:
     # colorbar.set_ticklabels(['0', '1'])
     # colorbar.set_label('Cluster')
 
-    # PLOT 3
-    # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
-    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
-    cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom',
-        colors=['#de8f05', '#0173b2'],
-        N=2)
-    sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[1,1].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
+    # # PLOT 3
+    # # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom',
+    #     colors=['#de8f05', '#0173b2'],
+    #     N=2)
+    # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})
+    # colorbar = ax[1,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
+        
+    labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
+    edge_map = filters.sobel(labels)
+    sns.heatmap(edge_map, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+
+    rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
+    norm_cut = future.graph.cut_normalized(labels, rag)
+    sns.heatmap(norm_cut, cmap='viridis', ax=ax[1,1], #vmin=0, vmax=clip_amount,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
     # PLOT 4
     # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
@@ -769,13 +779,17 @@ for file in all_files:
 
     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
     ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
-    # ax[1,1].set(title='Filtered K-Means Clustering from PCA', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[1,0].set(title='Edge Detection of SVD', xlabel='Hour', ylabel='Day')    
+    # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
+    ax[1,1].set(title='Normalized Cut', xlabel='Hour', ylabel='Day')
     f.tight_layout()
-    # plt.show(f)
-    f.savefig(pathOut+'user_{}_SVD_kmeans-missingDaysSkipped.png'.format(user))
+    plt.show(f)
+    # f.savefig(pathOut+'user_{}_SVD_kmeans-missingDaysSkipped.png'.format(user))
+    f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
+    
     plt.close(f)
+
     # break
 #############################################################
 
@@ -878,6 +892,7 @@ for file in all_files:
 #%%
 
 # circular variance plots
+import scipy
 
 fig, (left, right) = plt.subplots(ncols=2)
 for image in (left, right):
@@ -951,7 +966,8 @@ labs2 = np.where(edge_map > 0, 1, 0)
 rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
 print(future.graph.cut_normalized(labels, rag))
 
-
+plt.imshow(edge_map)
+plt.savefig('/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
 
 # # out3 = color.label2rgb(labels2, img, kind='avg', bg_label=0)
 
