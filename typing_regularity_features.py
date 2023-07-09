@@ -6,7 +6,6 @@ from scipy.sparse import csgraph
 import numpy as np
 from sklearn.cluster import KMeans
 from scipy import stats
-from datetime import datetime
 import matplotlib.pyplot as plt
 
 # sort files numerically
