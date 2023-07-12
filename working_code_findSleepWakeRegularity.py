@@ -825,13 +825,7 @@ for file in all_files:
     dfRegularity.columns = [1,2,3,4,5,6,7]
 
     cosSimVar = np.nanvar(dfRegularity)
-    print('+++++++++++++++++++++++++++++++++')
-    print(cosSimVar)
-    print('+++++++++++++++++++++++++++++++++')
 
-
-    if user > 20:
-        break
     
     # fig, axes = plt.subplots(figsize=(5,5))
     # sns.set(style="whitegrid")
