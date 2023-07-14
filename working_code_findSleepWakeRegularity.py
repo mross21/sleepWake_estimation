@@ -592,6 +592,7 @@ for file in all_files:
 ## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
 ## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
 
+# LOOP THROUGH EACH DAY TO SAMPLE? OR...
 
     sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
     sleep_fill = segmentation.flood(cluster_mat, sleep_idx, connectivity=1)
