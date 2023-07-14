@@ -11,7 +11,8 @@ from sklearn.cluster import KMeans
 import seaborn as sns
 import matplotlib as mpl
 from scipy import stats
-from skimage import future, filters
+from skimage import future, filters, segmentation
+
 
 # import copy
 # from sklearn.preprocessing import normalize
@@ -193,14 +194,14 @@ def get_regularity(mat, day_diff):
 def simple_threshold(im, threshold):
     return ((im > threshold) * 255).astype("uint8")
 
-# def sliding_window(elements, window_size, hr_gap):
-#     if len(elements) <= window_size:
-#        return elements
-#     windows = []
-#     ls = np.arange(0, len(elements), hr_gap)
-#     for i in ls:
-#         windows.append(elements[i:i+window_size])
-#     return windows
+def sliding_window(elements, window_size, hr_gap):
+    if len(elements) <= window_size:
+       return elements
+    windows = []
+    ls = np.arange(0, len(elements), hr_gap)
+    for i in ls:
+        windows.append(elements[i:i+window_size])
+    return windows
 
 # # # A recursive function to replace
 # # # previous color 'prevC' at '(x, y)'
@@ -553,13 +554,13 @@ for file in all_files:
     # get mean matrix value for each label
     i0,j0=np.where(cluster_mat==0)
     vals0 = m[i0,j0]
-    median0 = np.mean(vals0)
+    mean0 = np.mean(vals0)
     i1,j1=np.where(cluster_mat==1)
     vals1 = m[i1,j1]
-    median1 = np.mean(vals1)
+    mean1 = np.mean(vals1)
     # assign lower value to sleep
-    sleep_label = np.where(median0 < median1, 0, 1)
-    wake_label = np.where(median0 > median1, 0, 1)
+    sleep_label = np.where(mean0 < mean1, 0, 1)
+    wake_label = np.where(mean0 > mean1, 0, 1)
 
 
     # wake_label_idx = cluster_mat[0].argmax()
@@ -570,16 +571,83 @@ for file in all_files:
     #     print('sleep and wake labels are the same')
     #     break
 
+############ FLOOD FILL ##############################
 
-## find # of hours of no activity
-    noActivityAmt = dfKmeans.groupby('day').apply(lambda x: x[x['cluster'] == sleep_label].shape[0])
-    dates = pd.date_range(df['date'].unique()[1], periods=n_days).tolist()
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
 
-    dfCircReg = pd.DataFrame()
-    dfCircReg['date'] = dates
-    dfCircReg['circvar'] = circVarList
-    dfCircReg['circmean'] = circMeanList
-    dfCircReg['amount_noActivity'] = noActivityAmt
+
+    sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
+    sleep_fill = segmentation.flood(cluster_mat, sleep_idx, connectivity=1)
+    sleep_label_matrix = np.where(sleep_fill == True, 0,1)
+    # plt.imshow(sleep_label_matrix, cmap='viridis')
+    # plt.show()
+    # plt.clf()
+
+
+    # fill gaps in sleep
+    # make dataframe of day|hour|nKP|timestamp
+    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
+    date2 = pd.to_datetime(df['date']).drop_duplicates().nsmallest(2).max()
+    start_date = np.datetime64(date2, 'h')
+    dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+    dfActivity['cluster'] = sleep_label_matrix.flatten()
+    dateEnd = pd.to_datetime(df['date']).drop_duplicates().nlargest(2).iloc[-1]
+    end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
+
+    window_size = 12
+    hr_space = 8
+    slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
+
+    dfConsecClusters = pd.DataFrame()
+    for window in slidingWindowList:
+        windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
+        try:
+            firstSleep_idx = next(i for i,v in enumerate(windowGrp['cluster']) if v == 0)
+        except StopIteration:
+            continue
+        lastSleep_idx = len(windowGrp['cluster']) - next(i for i, val in enumerate(reversed(windowGrp['cluster']), 1) if val != 1)
+        grpIdx0 = window.index[0]
+        # sleepGrp = windowGrp.iloc[firstSleep_idx:lastSleep_idx]
+        dfActivity['cluster'].iloc[grpIdx0+firstSleep_idx:grpIdx0+lastSleep_idx] = [0]*(lastSleep_idx - firstSleep_idx)
+
+        
+    sleepWakeMatrix = np.array(dfActivity['cluster']).reshape(out2.shape)
+    # plt.imshow(sleepWakeMatrix, cmap='viridis')
+    # # plt.show()
+    # plt.savefig(pathOut+'HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-floodfill-missingDaysSkipped.png'.format(user))
+    # plt.clf()
+    
+    # if user >=15:
+    #     break
+######################################################
+
+
+# ## find # of hours of no activity
+#     noActivityAmt = dfKmeans.groupby('day').apply(lambda x: x[x['cluster'] == sleep_label].shape[0])
+#     dates = pd.date_range(df['date'].unique()[1], periods=n_days).tolist()
+
+#     dfCircReg = pd.DataFrame()
+#     dfCircReg['date'] = dates
+#     dfCircReg['circvar'] = circVarList
+#     dfCircReg['circmean'] = circMeanList
+#     dfCircReg['amount_noActivity'] = noActivityAmt
     
     
 
@@ -709,85 +777,93 @@ for file in all_files:
 #     # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
 
 
-# #############################################################
-#     # Visualize original data heatmap and heatmap with k-means cluster labels
-#     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-#                         figsize=(10,10))
-#     # PLOT 1
-#     sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
-#                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-#     # PLOT 2
-#     sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
-#                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-#     # # PLOT 3
-#     # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
-#     #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+#############################################################
+    # Visualize original data heatmap and heatmap with k-means cluster labels
+    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
+                        figsize=(10,10))
+    # PLOT 1
+    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 2
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # # PLOT 3
+    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     
-#     # ax[1,0].hist(out2.flatten(), bins=100)
-#     # # PLOT 2
-#     # cluster_mat = dfPCA['cluster'].to_numpy().reshape(X.shape)
-#     # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-#     #     'Custom',
-#     #     colors=['#de8f05', '#0173b2'],
-#     #     N=2)
-#     # sns.heatmap(cluster_mat, ax=ax[0,1], cmap=cmap,
-#     #             cbar_kws={'fraction': 0.043})
-#     # colorbar = ax[0,1].collections[0].colorbar
-#     # colorbar.set_ticks([0.25, 0.75])
-#     # colorbar.set_ticklabels(['0', '1'])
-#     # colorbar.set_label('Cluster')
+    # ax[1,0].hist(out2.flatten(), bins=100)
+    # PLOT 3
+    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(M1.shape)
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'Custom',
+        colors=['#de8f05', '#0173b2'],
+        N=2)
+    sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
+                cbar_kws={'fraction': 0.043})
+    colorbar = ax[1,0].collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['0', '1'])
+    colorbar.set_label('Cluster')
 
-#     # # PLOT 3
-#     # # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
-#     # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
-#     # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-#     #     'Custom',
-#     #     colors=['#de8f05', '#0173b2'],
-#     #     N=2)
-#     # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
-#     #             cbar_kws={'fraction': 0.043})
-#     # colorbar = ax[1,1].collections[0].colorbar
-#     # colorbar.set_ticks([0.25, 0.75])
-#     # colorbar.set_ticklabels(['0', '1'])
-#     # colorbar.set_label('Cluster')
+
+    sns.heatmap(sleepWakeMatrix, ax=ax[1,1], cmap=cmap,
+                cbar_kws={'fraction': 0.043})
+    colorbar = ax[0,1].collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['0', '1'])
+    colorbar.set_label('Cluster')
+
+    # # PLOT 3
+    # # cluster_mat = dfActivity['cluster'].to_numpy().reshape(X.shape)
+    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom',
+    #     colors=['#de8f05', '#0173b2'],
+    #     N=2)
+    # sns.heatmap(cluster_mat, ax=ax[1,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})
+    # colorbar = ax[1,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
         
-#     labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
-#     edge_map = filters.sobel(labels)
-#     sns.heatmap(edge_map, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
-#                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
+    # edge_map = filters.sobel(labels)
+    # sns.heatmap(edge_map, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=clip_amount,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
-#     rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
-#     norm_cut = future.graph.cut_normalized(labels, rag)
-#     sns.heatmap(norm_cut, cmap='viridis', ax=ax[1,1], #vmin=0, vmax=clip_amount,
-#                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # rag = future.graph.rag_boundary(labels, edge_map, connectivity=0)
+    # norm_cut = future.graph.cut_normalized(labels, rag)
+    # sns.heatmap(norm_cut, cmap='viridis', ax=ax[1,1], #vmin=0, vmax=clip_amount,
+    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
-#     # PLOT 4
-#     # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
-#     # cmap = mpl.colors.LinearSegmentedColormap.from_list(
-#     #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
-#     # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
-#     #             cbar_kws={'fraction': 0.043})    
-#     # colorbar = ax[1,1].collections[0].colorbar
-#     # colorbar.set_ticks([0.25, 0.75])
-#     # colorbar.set_ticklabels(['0', '1'])
-#     # colorbar.set_label('Cluster')
+    # PLOT 4
+    # consecClusters=dfConsecClustersFilled['cluster'].to_numpy().reshape(M1.shape)
+    # cmap = mpl.colors.LinearSegmentedColormap.from_list(
+    #     'Custom', colors=['#de8f05', '#0173b2'], N=2)
+    # sns.heatmap(consecClusters, ax=ax[1,1], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})    
+    # colorbar = ax[1,1].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
 
 
-#     ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
-#     ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-#     # ax[1,0].set(title='Truncated Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-#     ax[1,0].set(title='Edge Detection of SVD', xlabel='Hour', ylabel='Day')    
-#     # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
-#     ax[1,1].set(title='Normalized Cut', xlabel='Hour', ylabel='Day')
-#     f.tight_layout()
+    ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
+    ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[1,0].set(title='K-Means of Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='Edge Detection of SVD', xlabel='Hour', ylabel='Day')    
+    # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
+    ax[1,1].set(title='Flood Fill of K-Means', xlabel='Hour', ylabel='Day')
+    f.tight_layout()
     # plt.show(f)
-    # f.savefig(pathOut+'user_{}_SVD_kmeans-missingDaysSkipped.png'.format(user))
-    # f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
+    f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-missingDaysSkipped.png'.format(user))
+    # # f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
     
-    # plt.close(f)
+    plt.close(f)
 
     # break
-# #############################################################
+#############################################################
 
     # # if user >= 22:
     # #     break
@@ -812,21 +888,21 @@ for file in all_files:
     # plt.close(f)
 
 
-    # calculate regularity
-    diff1 = get_regularity(out2, 1)
-    diff2 = get_regularity(out2, 2)
-    diff3 = get_regularity(out2, 3)
-    diff4 = get_regularity(out2, 4)
-    diff5 = get_regularity(out2, 5)
-    diff6 = get_regularity(out2, 6)
-    diff7 = get_regularity(out2, 7)
-    dfRegularity = pd.DataFrame([diff1,diff2,diff3,diff4,
-                                diff5,diff6,diff7]).T
-    dfRegularity.columns = [1,2,3,4,5,6,7]
+    # # calculate regularity
+    # diff1 = get_regularity(out2, 1)
+    # diff2 = get_regularity(out2, 2)
+    # diff3 = get_regularity(out2, 3)
+    # diff4 = get_regularity(out2, 4)
+    # diff5 = get_regularity(out2, 5)
+    # diff6 = get_regularity(out2, 6)
+    # diff7 = get_regularity(out2, 7)
+    # dfRegularity = pd.DataFrame([diff1,diff2,diff3,diff4,
+    #                             diff5,diff6,diff7]).T
+    # dfRegularity.columns = [1,2,3,4,5,6,7]
 
-    cosSimVar = np.nanvar(dfRegularity)
-    cosSimMeanVar = np.nanvar(dfRegularity.mean(axis = 0, skipna = True))
-    cosSimMedianVar = np.nanvar(dfRegularity.median(axis = 0, skipna = True))
+    # cosSimVar = np.nanvar(dfRegularity)
+    # cosSimMeanVar = np.nanvar(dfRegularity.mean(axis = 0, skipna = True))
+    # cosSimMedianVar = np.nanvar(dfRegularity.median(axis = 0, skipna = True))
     
     # fig, axes = plt.subplots(figsize=(5,5))
     # sns.set(style="whitegrid")
@@ -955,7 +1031,33 @@ otherLabs = np.where(out2.flatten().index.isin(reachable), 1, 0)
 
 
 #%%
-from skimage import future, filters, io
+## FLOOD FILL
+
+# from skimage import future, filters
+# plt.imshow(out2, cmap='viridis')
+# plt.show()
+# plt.clf()
+
+# sleep and wake indices
+# wake_idx = np.unravel_index(np.argmax(np.array(out2), axis=None), M1.shape) 
+sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
+
+# labels = np.array(dfKmeans['cluster']).reshape(M1.shape)
+# edge_map = filters.sobel(labels)
+# plt.imshow(edge_map, cmap='viridis')
+# plt.show()
+# plt.clf()
+
+from skimage.segmentation import flood
+wake_fill = flood(cluster_mat, sleep_idx, connectivity=1)
+plt.imshow(wake_fill, cmap='viridis')
+plt.show()
+plt.clf()
+
+
+
+#%%
+from skimage import future, filters
 
 img = out2
 
