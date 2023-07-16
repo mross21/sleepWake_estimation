@@ -594,7 +594,11 @@ for file in all_files:
 
 # LOOP THROUGH EACH DAY TO SAMPLE? OR...
 
+####### do this per row?
+####### and also get the last wake_label per row then flood fill after that?
     sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
+
+
     sleep_fill = segmentation.flood(cluster_mat, sleep_idx, connectivity=1)
     sleep_label_matrix = np.where(sleep_fill == True, 0,1)
     # plt.imshow(sleep_label_matrix, cmap='viridis')
