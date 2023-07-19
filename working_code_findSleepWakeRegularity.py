@@ -571,6 +571,9 @@ for file in all_files:
     #     print('sleep and wake labels are the same')
     #     break
 
+    if user == 81:
+        break
+#%%
 ############ FLOOD FILL ##############################
 
 ## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
@@ -596,9 +599,47 @@ for file in all_files:
 
 ####### do this per row?
 ####### and also get the last wake_label per row then flood fill after that?
+
+# get min of each row
+# sleep_fill = cluster_mat
+output = np.empty(shape=out2.shape, dtype='float')
+for r in range(out2.shape[0]):
+    print('row: {}'.format(r))
+    # sleep_fill = sleep_fill
+    # plt.imshow(sleep_fill, cmap='viridis')
+    # plt.show()
+    row = cluster_mat[r]
+    idx_rowMin = np.argmin(row)
+    if cluster_mat[r,idx_rowMin] != sleep_label:
+        print('no sleep')
+        output[r] = [wake_label]*len(row)
+        continue
+    print(idx_rowMin)
+    sleep_flood = segmentation.flood(cluster_mat, (r,idx_rowMin),connectivity=1)
+    # sleep_flood = np.where(sleep_fill == True, sleep_label,wake_label)
+    # plt.imshow(sleep_flood, cmap='viridis')
+    # plt.show()
+    output[r] = sleep_flood[r]
+    plt.imshow(output, cmap='viridis')
+    plt.show()
+
+#%%
+# sleep_label_matrix = np.where(sleep_fill == True, 0,1)
+plt.imshow(cluster_mat, cmap = 'viridis')
+plt.show()
+plt.imshow(sleep_fill, cmap='viridis')
+plt.show()
+
+#%%
+
+
+
+
+
+
+
+
     sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
-
-
     sleep_fill = segmentation.flood(cluster_mat, sleep_idx, connectivity=1)
     sleep_label_matrix = np.where(sleep_fill == True, 0,1)
     # plt.imshow(sleep_label_matrix, cmap='viridis')
