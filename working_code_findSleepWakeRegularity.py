@@ -310,8 +310,8 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user != 115:
-    #     continue
+    if user < 126:
+        continue
 
     df['healthCode'] = df['healthCode'].str.lower()
     df['diagnosis'] = df['healthCode'].map(dictDiag)
@@ -331,16 +331,16 @@ for file in all_files:
     # find avg number of hours of activity/day
     Mbinary = np.where(M1 > 0, 1, 0)
     avgActivityPerDay = Mbinary.mean(axis=1).mean()
-    print('avg n hours per day with typing activity: {}'.format(avgActivityPerDay))
+    # print('avg n hours per day with typing activity: {}'.format(avgActivityPerDay))
 
     # of the days with kp, find median amount
     Mkp = np.where(M1 > 0, M1, np.nan)
     avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
-    print('median amount of kp overall: {}'.format(avgAmountPerDay))
+    # print('median amount of kp overall: {}'.format(avgAmountPerDay))
 
     if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
         print('not enough data')
-        print('-----------------------------------------------')
+        # print('-----------------------------------------------')
         continue
 
 
@@ -461,7 +461,7 @@ for file in all_files:
     hrs_arr = np.array(list(range(n_hrs)) * n_days)
     data = np.vstack((days_arr,hrs_arr, kp_values))
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(data[2:3], B, rank=1, alpha=5, as_sparse=False)
+    H_star, W_star = regularized_svd(data[2:3], B, rank=1, alpha=50, as_sparse=False)
     
     out2 = W_star.reshape(M1.shape)
     out2 = out2 * -1
@@ -503,7 +503,7 @@ for file in all_files:
     dfKmeans['day'] = (pd.Series(np.arange(n_days))
                 .repeat(n_hrs).reset_index(drop=True))
 
-    dfPCA = dfKmeans
+    # dfPCA = dfKmeans
 
     # # Visualize k-means clusters in PCA embedding
     # f, ax = plt.subplots()
@@ -568,6 +568,12 @@ for file in all_files:
     sleep_label = int(np.where(mean0 < mean1, 0, 1))
     wake_label = int(np.where(mean0 > mean1, 0, 1))
 
+    # force sleep label to be 0
+    if sleep_label == 1:
+        cluster_mat = abs(cluster_mat-1)
+        sleep_label = 0
+        wake_label = 1
+
 
     # wake_label_idx = cluster_mat[0].argmax()
     # wake_label = cluster_mat[0,wake_label_idx]
@@ -587,26 +593,39 @@ for file in all_files:
     output = np.full(shape=out2.shape, fill_value=2, dtype='int')
     for r in range(out2.shape[0]):
         row = cluster_mat[r]
-        idx_rowMin = np.argmin(row)
+        if ((row == np.array([sleep_label]*len(row))).all()) == True:
+            output[r] = [sleep_label] * len(row)
+            continue
+        if ((cluster_mat[r, 2:15] == np.array([wake_label]*13)).all()) == True:
+            idx_rowMin = np.argmin(out2[r])
+        else:
+            idx_rowMin = np.argmin(out2[r, 2:15]) + 2
         if cluster_mat[r,idx_rowMin] != sleep_label:
-            print('no sleep')
+            # print('no sleep')
             output[r] = [wake_label]*len(row)
             continue
         sleep_flood = segmentation.flood(cluster_mat, (r,idx_rowMin),connectivity=1)
-        if sleep_label == 0:
-            output[r] = np.invert(sleep_flood[r])
-        else: 
-            output[r] = sleep_flood[r]
-        if row[-1] == sleep_label:
-            i = 0
-            while row[23-i] == sleep_label:
-                end_idx = i
-                i += 1
-            output[r,(23-end_idx):] = sleep_label
+        output[r] = np.invert(sleep_flood[r])
 
-### fix gaps in sleep
-    window_size = 6
-    hr_space = 4
+        # add sleep label before midnight if exists
+        if r == out2.shape[0]-1:
+            if (row[-1] == sleep_label):
+                i = 0
+                while row[23-i] == sleep_label:
+                    end_idx = i
+                    i += 1
+                output[r,(23-end_idx):] = sleep_label
+        else:
+            if (row[-1] == sleep_label) & (cluster_mat[r+1,0] == sleep_label):
+                i = 0
+                while row[23-i] == sleep_label:
+                    end_idx = i
+                    i += 1
+                output[r,(23-end_idx):] = sleep_label
+
+    ### fix gaps in sleep
+    window_size = 12
+    hr_space = 10
     floodFillFlatten = output.flatten()
 
     slidingWindowList = sliding_window(floodFillFlatten, window_size, hr_space)
@@ -626,219 +645,214 @@ for file in all_files:
         windowCount += 1
         
     sleepWakeMatrix = floodFillFlatten.reshape(out2.shape)
-    
-    print('kmeans')
-    plt.imshow(cluster_mat, cmap='viridis')
-    plt.show()
-    plt.clf()
-    print('after flood fill')
-    plt.imshow(output, cmap='viridis')
-    plt.show()
-    plt.clf()
-    print('after fill gaps in sleep')
-    plt.imshow(sleepWakeMatrix, cmap='viridis')
-    plt.show()
-    plt.clf()
-
-    print('+++++++++++++++++++++++++++++++++++++++++++++++')
-
-    if user == 3:
-        break
-
-#%%
-
-
-
-
-
-
-
-
-    sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
-    sleep_fill = segmentation.flood(cluster_mat, sleep_idx, connectivity=1)
-    sleep_label_matrix = np.where(sleep_fill == True, 0,1)
-    # plt.imshow(sleep_label_matrix, cmap='viridis')
+        
+    # print('kmeans')
+    # plt.imshow(cluster_mat, cmap='viridis')
+    # plt.show()
+    # plt.clf()
+    # print('after flood fill')
+    # plt.imshow(output, cmap='viridis')
+    # plt.show()
+    # plt.clf()
+    # print('after fill gaps in sleep')
+    # plt.imshow(sleepWakeMatrix, cmap='viridis')
     # plt.show()
     # plt.clf()
 
+    # print('+++++++++++++++++++++++++++++++++++++++++++++++')
 
-    # fill gaps in sleep
-    # make dataframe of day|hour|nKP|timestamp
-    dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
-    date2 = pd.to_datetime(df['date']).drop_duplicates().nsmallest(2).max()
-    start_date = np.datetime64(date2, 'h')
-    dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
-    dfActivity['cluster'] = sleep_label_matrix.flatten()
-    dateEnd = pd.to_datetime(df['date']).drop_duplicates().nlargest(2).iloc[-1]
-    end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
 
-    window_size = 12
-    hr_space = 8
-    slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
 
-    dfConsecClusters = pd.DataFrame()
-    for window in slidingWindowList:
-        windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
-        try:
-            firstSleep_idx = next(i for i,v in enumerate(windowGrp['cluster']) if v == 0)
-        except StopIteration:
-            continue
-        lastSleep_idx = len(windowGrp['cluster']) - next(i for i, val in enumerate(reversed(windowGrp['cluster']), 1) if val != 1)
-        grpIdx0 = window.index[0]
-        # sleepGrp = windowGrp.iloc[firstSleep_idx:lastSleep_idx]
-        dfActivity['cluster'].iloc[grpIdx0+firstSleep_idx:grpIdx0+lastSleep_idx] = [0]*(lastSleep_idx - firstSleep_idx)
+
+
+
+
+
+    # sleep_idx = np.unravel_index(np.argmin(np.array(out2), axis=None), M1.shape) 
+    # sleep_fill = segmentation.flood(cluster_mat, sleep_idx, connectivity=1)
+    # sleep_label_matrix = np.where(sleep_fill == True, 0,1)
+    # # plt.imshow(sleep_label_matrix, cmap='viridis')
+    # # plt.show()
+    # # plt.clf()
+
+
+    # # fill gaps in sleep
+    # # make dataframe of day|hour|nKP|timestamp
+    # dfActivity = pd.DataFrame(data.T, columns = ['day','hour','nKP'])
+    # date2 = pd.to_datetime(df['date']).drop_duplicates().nsmallest(2).max()
+    # start_date = np.datetime64(date2, 'h')
+    # dfActivity['timestamp'] = start_date + days_arr.astype('timedelta64[D]') + hrs_arr.astype('timedelta64[h]')
+    # dfActivity['cluster'] = sleep_label_matrix.flatten()
+    # dateEnd = pd.to_datetime(df['date']).drop_duplicates().nlargest(2).iloc[-1]
+    # end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
+
+    # window_size = 12
+    # hr_space = 8
+    # slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
+
+    # dfConsecClusters = pd.DataFrame()
+    # for window in slidingWindowList:
+    #     windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
+    #     try:
+    #         firstSleep_idx = next(i for i,v in enumerate(windowGrp['cluster']) if v == 0)
+    #     except StopIteration:
+    #         continue
+    #     lastSleep_idx = len(windowGrp['cluster']) - next(i for i, val in enumerate(reversed(windowGrp['cluster']), 1) if val != 1)
+    #     grpIdx0 = window.index[0]
+    #     # sleepGrp = windowGrp.iloc[firstSleep_idx:lastSleep_idx]
+    #     dfActivity['cluster'].iloc[grpIdx0+firstSleep_idx:grpIdx0+lastSleep_idx] = [0]*(lastSleep_idx - firstSleep_idx)
 
         
-    sleepWakeMatrix = np.array(dfActivity['cluster']).reshape(out2.shape)
-    # plt.imshow(sleepWakeMatrix, cmap='viridis')
-    # # plt.show()
-    # plt.savefig(pathOut+'HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-floodfill-missingDaysSkipped.png'.format(user))
-    # plt.clf()
-    
+    # sleepWakeMatrix = np.array(dfActivity['cluster']).reshape(out2.shape)
+    # # plt.imshow(sleepWakeMatrix, cmap='viridis')
+    # # # plt.show()
+    # # plt.savefig(pathOut+'HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-floodfill-missingDaysSkipped.png'.format(user))
+    # # plt.clf()
+
     # if user >=15:
     #     break
-######################################################
+    ######################################################
 
 
-# ## find # of hours of no activity
-#     noActivityAmt = dfKmeans.groupby('day').apply(lambda x: x[x['cluster'] == sleep_label].shape[0])
-#     dates = pd.date_range(df['date'].unique()[1], periods=n_days).tolist()
+    # ## find # of hours of no activity
+    #     noActivityAmt = dfKmeans.groupby('day').apply(lambda x: x[x['cluster'] == sleep_label].shape[0])
+    #     dates = pd.date_range(df['date'].unique()[1], periods=n_days).tolist()
 
-#     dfCircReg = pd.DataFrame()
-#     dfCircReg['date'] = dates
-#     dfCircReg['circvar'] = circVarList
-#     dfCircReg['circmean'] = circMeanList
-#     dfCircReg['amount_noActivity'] = noActivityAmt
-    
-    
-
-
-
-# #########################################
-#     # get median wake time
-#     # makes assumption that min hour is wake up (and not night schedule)
-#     wake_time = dfActivity.loc[dfActivity['cluster'] == wake_label]
-#     median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
-
-#     dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-#     for obs in range(len(dfActivity)):
-#         # print(obs)
-#         if dfActivity['cluster_change_flag'].iloc[obs] == 1:
-#             # get neighboring rows
-#             neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
-#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
-#             if sum(neighbors['cluster_change_flag']) > 1:
-#                 # print(neighbors)
-#                 # if one cluster label diff from all others
-#                 surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
-#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
-#                                     (obs+3)))].value_counts().index[0]
-#                 dfActivity['cluster'].iloc[obs] = surroundingLabel
-#                 # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
-#                 #     dfActivity['cluster'].iloc[obs] = wake_label
-#                 # else:
-#                 #     dfActivity['cluster'].iloc[obs] = sleep_label
-#                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
-#         # recalculate all change cluster labels
-#         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-# # #########################################
-
-
-# #### need to remove islands
-
-# # Python3 program to implement
-# # flood fill algorithm
-#     dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-#     for obs in range(len(dfActivity)):
-#         # print(obs)
-#         if dfActivity['cluster_change_flag'].iloc[obs] == 1:
-#             # get neighboring rows
-#             neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
-#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
-#             if sum(neighbors['cluster_change_flag']) > 1:
-#                 # print(neighbors)
-#                 # if one cluster label diff from all others
-
-
-#                 surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
-#                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
-#                                     (obs+3)))].value_counts().index[0]
-#                 dfActivity['cluster'].iloc[obs] = surroundingLabel
-#                 # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
-#                 #     dfActivity['cluster'].iloc[obs] = wake_label
-#                 # else:
-#                 #     dfActivity['cluster'].iloc[obs] = sleep_label
-#                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
-#         # recalculate all change cluster labels
-#         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
-# # #########################################
+    #     dfCircReg = pd.DataFrame()
+    #     dfCircReg['date'] = dates
+    #     dfCircReg['circvar'] = circVarList
+    #     dfCircReg['circmean'] = circMeanList
+    #     dfCircReg['amount_noActivity'] = noActivityAmt
 
 
 
-#     MchangeFlag = dfActivity['cluster_change_flag'].to_numpy().reshape(M1.shape)
-#     for i in range(n_days):
-#         for j in range(n_hrs):
-#             if MchangeFlag[i][j] == 1:
-#                 print(i,j)
-#                 print(cluster_mat[i][j])
+
+
+    # #########################################
+    #     # get median wake time
+    #     # makes assumption that min hour is wake up (and not night schedule)
+    #     wake_time = dfActivity.loc[dfActivity['cluster'] == wake_label]
+    #     median_wake_hour = round(wake_time.groupby(['day'])['hour'].min().median(),0)
+
+    #     dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+    #     for obs in range(len(dfActivity)):
+    #         # print(obs)
+    #         if dfActivity['cluster_change_flag'].iloc[obs] == 1:
+    #             # get neighboring rows
+    #             neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
+    #                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
+    #             if sum(neighbors['cluster_change_flag']) > 1:
+    #                 # print(neighbors)
+    #                 # if one cluster label diff from all others
+    #                 surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
+    #                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
+    #                                     (obs+3)))].value_counts().index[0]
+    #                 dfActivity['cluster'].iloc[obs] = surroundingLabel
+    #                 # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
+    #                 #     dfActivity['cluster'].iloc[obs] = wake_label
+    #                 # else:
+    #                 #     dfActivity['cluster'].iloc[obs] = sleep_label
+    #                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
+    #         # recalculate all change cluster labels
+    #         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+    # # #########################################
+
+
+    # #### need to remove islands
+
+    # # Python3 program to implement
+    # # flood fill algorithm
+    #     dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+    #     for obs in range(len(dfActivity)):
+    #         # print(obs)
+    #         if dfActivity['cluster_change_flag'].iloc[obs] == 1:
+    #             # get neighboring rows
+    #             neighbors = dfActivity.iloc[int(np.where((obs-1) < 0, 0, (obs-1))) :
+    #                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), (obs+2)))]
+    #             if sum(neighbors['cluster_change_flag']) > 1:
+    #                 # print(neighbors)
+    #                 # if one cluster label diff from all others
+
+
+    #                 surroundingLabel = dfActivity['cluster'].iloc[int(np.where((obs-2) < 0,0,(obs-2))):
+    #                                     int(np.where((obs+2) > len(dfActivity), len(dfActivity), 
+    #                                     (obs+3)))].value_counts().index[0]
+    #                 dfActivity['cluster'].iloc[obs] = surroundingLabel
+    #                 # if dfActivity['hour'].iloc[obs] >= median_wake_hour:
+    #                 #     dfActivity['cluster'].iloc[obs] = wake_label
+    #                 # else:
+    #                 #     dfActivity['cluster'].iloc[obs] = sleep_label
+    #                 # print('new label: {}'.format(dfActivity['cluster'].iloc[obs]))
+    #         # recalculate all change cluster labels
+    #         dfActivity['cluster_change_flag'] = abs(dfActivity['cluster'].diff()).replace(float('NaN'),0)
+    # # #########################################
 
 
 
-# # x = 4
-# # y = 4
-# # newC = 3
-# # floodFill(screen, x, y, newC, n_days, n_hrs)
+    #     MchangeFlag = dfActivity['cluster_change_flag'].to_numpy().reshape(M1.shape)
+    #     for i in range(n_days):
+    #         for j in range(n_hrs):
+    #             if MchangeFlag[i][j] == 1:
+    #                 print(i,j)
+    #                 print(cluster_mat[i][j])
 
-#     break
 
 
+    # # x = 4
+    # # y = 4
+    # # newC = 3
+    # # floodFill(screen, x, y, newC, n_days, n_hrs)
 
+    #     break
 
 
 
 
 
 
-#  #  # loop through sliding window of approx 30 hrs to search for largest blocks of 0/1
-#     window_size = 30 #int(len(dfActivity)/28)
-#     hr_space = 8
-#     # windowList = np.array_split(dfActivity['timestamp'], window_size)
-#     slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
-
-#     dfConsecClusters = pd.DataFrame()
-#     for window in slidingWindowList:
-#         windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
-#         ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
-#         dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
-#         try:
-#             max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
-#         except ValueError:
-#             max0IdxList = []
-#         try:
-#             max1IdxList = max(dfIdx.loc[dfIdx['cluster'] == 1]['idx'], key=len)
-#         except ValueError:
-#             max1IdxList = []
-#         # get the df info for indices
-#         cluster0 = windowGrp.iloc[max0IdxList]
-#         cluster1 = windowGrp.iloc[max1IdxList]
-#         dfConsecClusters = dfConsecClusters.append((cluster0,cluster1))
 
 
-#         # if len(dfConsecClusters) > 80:
-#         #     break
-#     # break
 
-#     dfConsecClusters = dfConsecClusters.sort_values(by='timestamp').drop_duplicates(subset='timestamp')
-#     dictClusterLabels = dict(zip(dfConsecClusters['timestamp'], dfConsecClusters['cluster']))
-#     dfConsecClustersFilled = pd.DataFrame(dfActivity['timestamp'], columns = ['timestamp'])
-#     dfConsecClustersFilled['cluster'] = dfConsecClustersFilled['timestamp'].map(dictClusterLabels)
-#     dfConsecClustersFilled['day'] = dfActivity['day']
-#     dfConsecClustersFilled['hour'] = dfActivity['hour']
-#     # dfConsecClustersFilled['cluster2'] = dfConsecClustersFilled.groupby('day').apply(lambda x: x.loc['cluster'])
-#     # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
+    #  #  # loop through sliding window of approx 30 hrs to search for largest blocks of 0/1
+    #     window_size = 30 #int(len(dfActivity)/28)
+    #     hr_space = 8
+    #     # windowList = np.array_split(dfActivity['timestamp'], window_size)
+    #     slidingWindowList = sliding_window(dfActivity['timestamp'], window_size, hr_space)
+
+    #     dfConsecClusters = pd.DataFrame()
+    #     for window in slidingWindowList:
+    #         windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
+    #         ranges=[list((v,list(g))) for v,g in groupby(range(len(windowGrp)),lambda idx:windowGrp['cluster'][idx])]
+    #         dfIdx = pd.DataFrame(ranges, columns = ['cluster','idx'])
+    #         try:
+    #             max0IdxList = max(dfIdx.loc[dfIdx['cluster'] == 0]['idx'], key=len)
+    #         except ValueError:
+    #             max0IdxList = []
+    #         try:
+    #             max1IdxList = max(dfIdx.loc[dfIdx['cluster'] == 1]['idx'], key=len)
+    #         except ValueError:
+    #             max1IdxList = []
+    #         # get the df info for indices
+    #         cluster0 = windowGrp.iloc[max0IdxList]
+    #         cluster1 = windowGrp.iloc[max1IdxList]
+    #         dfConsecClusters = dfConsecClusters.append((cluster0,cluster1))
 
 
-#############################################################
+    #         # if len(dfConsecClusters) > 80:
+    #         #     break
+    #     # break
+
+    #     dfConsecClusters = dfConsecClusters.sort_values(by='timestamp').drop_duplicates(subset='timestamp')
+    #     dictClusterLabels = dict(zip(dfConsecClusters['timestamp'], dfConsecClusters['cluster']))
+    #     dfConsecClustersFilled = pd.DataFrame(dfActivity['timestamp'], columns = ['timestamp'])
+    #     dfConsecClustersFilled['cluster'] = dfConsecClustersFilled['timestamp'].map(dictClusterLabels)
+    #     dfConsecClustersFilled['day'] = dfActivity['day']
+    #     dfConsecClustersFilled['hour'] = dfActivity['hour']
+    #     # dfConsecClustersFilled['cluster2'] = dfConsecClustersFilled.groupby('day').apply(lambda x: x.loc['cluster'])
+    #     # dfConsecClustersFilled['cluster_bfill'] = dfConsecClustersFilled['cluster'].bfill().ffill()
+
+
+    #############################################################
     # Visualize original data heatmap and heatmap with k-means cluster labels
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10))
@@ -846,12 +860,12 @@ for file in all_files:
     sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=200,
+    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.002,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # # PLOT 3
     # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
     #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    
+
     # ax[1,0].hist(out2.flatten(), bins=100)
     # PLOT 3
     # cluster_mat = dfPCA['cluster'].to_numpy().reshape(M1.shape)
@@ -917,17 +931,16 @@ for file in all_files:
     # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
     ax[1,1].set(title='Flood Fill of K-Means', xlabel='Hour', ylabel='Day')
     f.tight_layout()
-    # plt.show(f)
-    f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-missingDaysSkipped.png'.format(user))
+    plt.show(f)
+    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-missingDaysSkipped-connectivityNone.png'.format(user))
     # # f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
-    
+
     plt.close(f)
 
-    # break
-#############################################################
+    #############################################################
 
-    # # if user >= 22:
-    # #     break
+    # if user >= 11:
+    #     break
 
     # break
 
@@ -964,7 +977,7 @@ for file in all_files:
     # cosSimVar = np.nanvar(dfRegularity)
     # cosSimMeanVar = np.nanvar(dfRegularity.mean(axis = 0, skipna = True))
     # cosSimMedianVar = np.nanvar(dfRegularity.median(axis = 0, skipna = True))
-    
+
     # fig, axes = plt.subplots(figsize=(5,5))
     # sns.set(style="whitegrid")
     # sns.boxplot(data=dfRegularity, ax = axes, orient ='v').set(title = 'User {} Regularity (Diagnosis: {})'.format(user, diag))
@@ -1003,7 +1016,7 @@ for file in all_files:
     # # plt.savefig(pathOut + 'HRxDAYsizeMat/polarPlots/user_{}_regularity.png'.format(user))
     # plt.clf()
 
-# image threshold for image segmentation
+    # image threshold for image segmentation
     # p = out2.max()/4
     # p2 = out2.max()/3
     # p3 = out2.max()/5
@@ -1024,7 +1037,7 @@ for file in all_files:
     # if user >=25:
     #     break
 
-    # break
+    break
 
 #%%
 
