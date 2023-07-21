@@ -194,7 +194,7 @@ for file in all_files:
     hrs_arr = np.array(list(range(n_hrs)) * n_days)
     data = np.vstack((days_arr,hrs_arr, kp_values))
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(data, B, rank=1, alpha=0.1, as_sparse=False)
+    H_star, W_star = regularized_svd(data, B, rank=2, alpha=0.1, as_sparse=False)
 
     out2 = W_star.reshape(M.shape)
     out2 = out2 * -1

@@ -39,7 +39,7 @@ def closest_hour(lst, K):
     return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
 
 def day_weight(d1,d2):
-    return (d1+d2) #1/(abs(d1-d2)+.0000001)
+    return (d1+d2)/2
 
 def hour_weight(h1,h2):
     return (h1+h2)/2 #1/(abs(h1-h2)+.0000001)
@@ -427,8 +427,8 @@ for file in all_files:
     # M2=M1.T
     # M2_scaled = pd.DataFrame(std_scaler.fit_transform(M2), columns=M2.columns)
     # M = M2_scaled.T #M1.div(M1.sum(axis=1), axis=0) #normalize(M1, axis=1, norm='l1')
-
-    # M = M1/M1.sum().sum()
+    kpSum = M1.sum().sum()
+    # M1 = M1
 
 # # remove weeks with not enough data
 # # this doesn't make sense since large amounts of typing one hour out of
@@ -456,17 +456,21 @@ for file in all_files:
     # hard code adjacency matrix
     W = weighted_adjacency_matrix(np.array(M1))
 
-    kp_values = np.array(M1).flatten()
+    kp_values = np.array(M1).flatten()/kpSum
     days_arr = np.repeat(range(n_days), n_hrs)
     hrs_arr = np.array(list(range(n_hrs)) * n_days)
     data = np.vstack((days_arr,hrs_arr, kp_values))
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(data, B, rank=1, alpha=0.1, as_sparse=False)
-
+    H_star, W_star = regularized_svd(data[2:3], B, rank=1, alpha=5, as_sparse=False)
+    
     out2 = W_star.reshape(M1.shape)
     out2 = out2 * -1
-    clip_amount = out2.max()/4
-    cutoff = np.clip(out2, 0, clip_amount)
+    # plt.imshow(W_star.reshape(M1.shape)*-1, cmap='viridis')
+    # plt.show()
+
+
+    # clip_amount = out2.max()/4
+    # cutoff = np.clip(out2, 0, clip_amount)
 
     ## Circular variance/mean
     circVarList = np.apply_along_axis(stats.circvar, 1, out2)
@@ -488,7 +492,7 @@ for file in all_files:
     # # Something simple for first approach: PCA
     # pca = PCA(n_components=2)
     # X_pca = pca.fit_transform(dfM.to_numpy())
-    dfWstar = pd.DataFrame(cutoff.reshape(-1,1), columns = ['vals'])
+    dfWstar = pd.DataFrame(out2.reshape(-1,1), columns = ['vals'])
     kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
     dfKmeans = pd.DataFrame({
         # 'pca_x': X_pca[:, 0],
@@ -536,6 +540,8 @@ for file in all_files:
     # plt.imshow(cluster_mat)
     # plt.show()
 
+    # if user > 10:
+    #     break
 
 
     # # # make new var to update rows
@@ -559,8 +565,8 @@ for file in all_files:
     vals1 = m[i1,j1]
     mean1 = np.mean(vals1)
     # assign lower value to sleep
-    sleep_label = np.where(mean0 < mean1, 0, 1)
-    wake_label = np.where(mean0 > mean1, 0, 1)
+    sleep_label = int(np.where(mean0 < mean1, 0, 1))
+    wake_label = int(np.where(mean0 > mean1, 0, 1))
 
 
     # wake_label_idx = cluster_mat[0].argmax()
@@ -571,64 +577,73 @@ for file in all_files:
     #     print('sleep and wake labels are the same')
     #     break
 
-    if user == 81:
-        break
-#%%
-############ FLOOD FILL ##############################
+    # if user == 81:
+    #     break
 
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
-## THIS DOESN'T ACCOUNT FOR SLEEP BEFORE MIDNIGHT OR UNCONNECTED SLEEP SEGMENTS (USER 28)
+    
 
-# LOOP THROUGH EACH DAY TO SAMPLE? OR...
+    ############ FLOOD FILL ##############################
+    # get min of each row
+    output = np.full(shape=out2.shape, fill_value=2, dtype='int')
+    for r in range(out2.shape[0]):
+        row = cluster_mat[r]
+        idx_rowMin = np.argmin(row)
+        if cluster_mat[r,idx_rowMin] != sleep_label:
+            print('no sleep')
+            output[r] = [wake_label]*len(row)
+            continue
+        sleep_flood = segmentation.flood(cluster_mat, (r,idx_rowMin),connectivity=1)
+        if sleep_label == 0:
+            output[r] = np.invert(sleep_flood[r])
+        else: 
+            output[r] = sleep_flood[r]
+        if row[-1] == sleep_label:
+            i = 0
+            while row[23-i] == sleep_label:
+                end_idx = i
+                i += 1
+            output[r,(23-end_idx):] = sleep_label
 
-####### do this per row?
-####### and also get the last wake_label per row then flood fill after that?
+### fix gaps in sleep
+    window_size = 6
+    hr_space = 4
+    floodFillFlatten = output.flatten()
 
-# get min of each row
-# sleep_fill = cluster_mat
-output = np.empty(shape=out2.shape, dtype='float')
-for r in range(out2.shape[0]):
-    print('row: {}'.format(r))
-    # sleep_fill = sleep_fill
-    # plt.imshow(sleep_fill, cmap='viridis')
-    # plt.show()
-    row = cluster_mat[r]
-    idx_rowMin = np.argmin(row)
-    if cluster_mat[r,idx_rowMin] != sleep_label:
-        print('no sleep')
-        output[r] = [wake_label]*len(row)
-        continue
-    print(idx_rowMin)
-    sleep_flood = segmentation.flood(cluster_mat, (r,idx_rowMin),connectivity=1)
-    # sleep_flood = np.where(sleep_fill == True, sleep_label,wake_label)
-    # plt.imshow(sleep_flood, cmap='viridis')
-    # plt.show()
-    output[r] = sleep_flood[r]
+    slidingWindowList = sliding_window(floodFillFlatten, window_size, hr_space)
+
+    windowCount = 0
+    for window in slidingWindowList:
+        # windowGrp = dfActivity.loc[dfActivity['timestamp'].isin(window.reset_index(drop=True))].reset_index(drop=True)
+        try:
+            firstSleep_idx = next(i for i,v in enumerate(window) if v == sleep_label)
+        except StopIteration:
+            windowCount += 1
+            continue
+        lastSleep_idx = len(window) - next(i for i, val in enumerate(reversed(window), 1) if val != wake_label)
+        grpIdx0 = windowCount * hr_space
+        # sleepGrp = windowGrp.iloc[firstSleep_idx:lastSleep_idx]
+        floodFillFlatten[(grpIdx0+firstSleep_idx):(grpIdx0+lastSleep_idx)] = [sleep_label]*(lastSleep_idx-firstSleep_idx)
+        windowCount += 1
+        
+    sleepWakeMatrix = floodFillFlatten.reshape(out2.shape)
+    
+    print('kmeans')
+    plt.imshow(cluster_mat, cmap='viridis')
+    plt.show()
+    plt.clf()
+    print('after flood fill')
     plt.imshow(output, cmap='viridis')
     plt.show()
+    plt.clf()
+    print('after fill gaps in sleep')
+    plt.imshow(sleepWakeMatrix, cmap='viridis')
+    plt.show()
+    plt.clf()
 
-#%%
-# sleep_label_matrix = np.where(sleep_fill == True, 0,1)
-plt.imshow(cluster_mat, cmap = 'viridis')
-plt.show()
-plt.imshow(sleep_fill, cmap='viridis')
-plt.show()
+    print('+++++++++++++++++++++++++++++++++++++++++++++++')
+
+    if user == 3:
+        break
 
 #%%
 
