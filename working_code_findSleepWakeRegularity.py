@@ -310,8 +310,8 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    if user < 126:
-        continue
+    # if user < 126:
+    #     continue
 
     df['healthCode'] = df['healthCode'].str.lower()
     df['diagnosis'] = df['healthCode'].map(dictDiag)
@@ -931,8 +931,8 @@ for file in all_files:
     # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
     ax[1,1].set(title='Flood Fill of K-Means', xlabel='Hour', ylabel='Day')
     f.tight_layout()
-    plt.show(f)
-    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-missingDaysSkipped-connectivityNone.png'.format(user))
+    # plt.show(f)
+    f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-missingDaysSkipped-connectivityNone.png'.format(user))
     # # f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
 
     plt.close(f)
@@ -1037,7 +1037,7 @@ for file in all_files:
     # if user >=25:
     #     break
 
-    break
+    # break
 
 #%%
 
