@@ -194,11 +194,11 @@ def get_regularity(mat, day_diff):
 def simple_threshold(im, threshold):
     return ((im > threshold) * 255).astype("uint8")
 
-def sliding_window(elements, window_size, hr_gap):
+def sliding_window(elements, window_size, gap):
     if len(elements) <= window_size:
        return elements
     windows = []
-    ls = np.arange(0, len(elements), hr_gap)
+    ls = np.arange(0, len(elements), gap)
     for i in ls:
         windows.append(elements[i:i+window_size])
     return windows
@@ -310,7 +310,7 @@ for file in all_files:
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user < 126:
+    # if user < 63:
     #     continue
 
     df['healthCode'] = df['healthCode'].str.lower()
@@ -343,10 +343,31 @@ for file in all_files:
         # print('-----------------------------------------------')
         continue
 
-
     # remove first and last days
     # M1.drop([1,M1.shape[0]], axis=0, inplace=True)
     M1 = M1[1:-1]
+
+    # if less than 7 days, continue
+    if M1.shape[0] < 7:
+        print('not enough days')
+        continue
+
+    # remove 7-day segments of data if not enough
+    slidingWindowListForRemoval = sliding_window(M1, window_size=7, gap=1)
+    daysToRemove = []
+    c = 0
+    for w in slidingWindowListForRemoval:
+        if len(w) < 7:
+            break
+        Wbinary = np.where(w > 0, 1, 0)
+        avgActivity = Wbinary.mean(axis=1).mean()
+        Wkp = np.where(w > 0, w, np.nan)
+        avgAmount = np.nanmedian(np.nanmedian(Wkp, axis=1))
+        if (avgActivity < 0.2) | (avgAmount < 50):
+            daysToRemove.extend(list(range(c, c + 7)))
+        c += 1
+    # remove rows corresponding to indices in daysToRemove
+    M1 = M1[~M1.index.isin([*set(daysToRemove)])]
 
     # if less than 7 days, continue
     if M1.shape[0] < 7:
@@ -472,9 +493,9 @@ for file in all_files:
     # clip_amount = out2.max()/4
     # cutoff = np.clip(out2, 0, clip_amount)
 
-    ## Circular variance/mean
-    circVarList = np.apply_along_axis(stats.circvar, 1, out2)
-    circMeanList = np.apply_along_axis(stats.circmean, 1, out2)
+    # ## Circular variance/mean
+    # circVarList = np.apply_along_axis(stats.circvar, 1, out2)
+    # circMeanList = np.apply_along_axis(stats.circmean, 1, out2)
 
 
     # X = cutoff
@@ -492,16 +513,16 @@ for file in all_files:
     # # Something simple for first approach: PCA
     # pca = PCA(n_components=2)
     # X_pca = pca.fit_transform(dfM.to_numpy())
-    dfWstar = pd.DataFrame(out2.reshape(-1,1), columns = ['vals'])
-    kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
-    dfKmeans = pd.DataFrame({
-        # 'pca_x': X_pca[:, 0],
-        # 'pca_y': X_pca[:, 1],
-        'graph_reg_SVD_vals': dfWstar['vals'],
-        'cluster': kmeans.labels_})
+    # dfWstar = pd.DataFrame(out2.reshape(-1,1), columns = ['vals'])
+    # kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
+    # dfKmeans = pd.DataFrame({
+    #     # 'pca_x': X_pca[:, 0],
+    #     # 'pca_y': X_pca[:, 1],
+    #     'graph_reg_SVD_vals': dfWstar['vals'],
+    #     'cluster': kmeans.labels_})
     
-    dfKmeans['day'] = (pd.Series(np.arange(n_days))
-                .repeat(n_hrs).reset_index(drop=True))
+    # dfKmeans['day'] = (pd.Series(np.arange(n_days))
+    #             .repeat(n_hrs).reset_index(drop=True))
 
     # dfPCA = dfKmeans
 
@@ -536,7 +557,7 @@ for file in all_files:
     # end_date = np.datetime64(dateEnd, 'h') + np.timedelta64(23,'h')
 
 
-    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+# cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
     # plt.imshow(cluster_mat)
     # plt.show()
 
@@ -554,8 +575,11 @@ for file in all_files:
     # # dfLabels['hour'] = list(range(24))*n_days
     # # dfLabels = dfLabels[['day', 'hour', 'cluster']]
     
+
+    cluster_mat = np.where(out2 == 0, 0,1)
+
     # find sleep and wake labels
-    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
+    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
     m = np.array(M1)
     # get mean matrix value for each label
     i0,j0=np.where(cluster_mat==0)
@@ -586,6 +610,7 @@ for file in all_files:
     # if user == 81:
     #     break
 
+
     
 
     ############ FLOOD FILL ##############################
@@ -596,15 +621,17 @@ for file in all_files:
         if ((row == np.array([sleep_label]*len(row))).all()) == True:
             output[r] = [sleep_label] * len(row)
             continue
+        # if wake_label during hours 2-15, get min from 0-24 hr range
         if ((cluster_mat[r, 2:15] == np.array([wake_label]*13)).all()) == True:
             idx_rowMin = np.argmin(out2[r])
-        else:
+        else: # else limit min hour between hr 2-15 
             idx_rowMin = np.argmin(out2[r, 2:15]) + 2
+        # if min value not equal to sleep_label, then no sleep that day
         if cluster_mat[r,idx_rowMin] != sleep_label:
             # print('no sleep')
             output[r] = [wake_label]*len(row)
             continue
-        sleep_flood = segmentation.flood(cluster_mat, (r,idx_rowMin),connectivity=1)
+        sleep_flood = segmentation.flood(cluster_mat, (r,idx_rowMin))#NEED DIAG CONNECTIVITY #,connectivity=1)
         output[r] = np.invert(sleep_flood[r])
 
         # add sleep label before midnight if exists
@@ -624,8 +651,8 @@ for file in all_files:
                 output[r,(23-end_idx):] = sleep_label
 
     ### fix gaps in sleep
-    window_size = 12
-    hr_space = 10
+    window_size = 6
+    hr_space = 1
     floodFillFlatten = output.flatten()
 
     slidingWindowList = sliding_window(floodFillFlatten, window_size, hr_space)
@@ -931,8 +958,8 @@ for file in all_files:
     # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
     ax[1,1].set(title='Flood Fill of K-Means', xlabel='Hour', ylabel='Day')
     f.tight_layout()
-    # plt.show(f)
-    f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-missingDaysSkipped-connectivityNone.png'.format(user))
+    plt.show(f)
+    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-lowKPDaysSkipped-6hr1hrSlidingWindow.png'.format(user))
     # # f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
 
     plt.close(f)
