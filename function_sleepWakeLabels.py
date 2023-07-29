@@ -1,17 +1,6 @@
 #%%
-from pyarrow import parquet
-import re
-import glob
-import pandas as pd
-from scipy.sparse import csgraph
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-from skimage import segmentation
-import matplotlib as mpl
-# from sklearn.cluster import KMeans
-
 # sort files numerically
+import re
 numbers = re.compile(r'(\d+)')
 def numericalSort(value):
     parts = numbers.split(value)
@@ -19,14 +8,100 @@ def numericalSort(value):
     return(parts)
 
 def medianAAIKD(dataframe):
+    import numpy as np
     grpAA = dataframe.loc[((dataframe['keypress_type'] == 'alphanum') &
                                 (dataframe['previousKeyType'] == 'alphanum'))]
     # get median IKD
     medAAIKD = np.nanmedian(grpAA['IKD']) if len(grpAA) >= 20 else float('NaN')
     return(medAAIKD)
 
-def closest_hour(lst, K):
-    return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
+def get_typingMatrices(df):
+    """
+    Set up Biaffect typing activity and typing speed matrices for graph
+    regularized SVD.
+
+    Parameters
+    ----------
+    df : pandas dataframe
+         preprocessed BiAffect keypress file.
+
+    Returns
+    -------
+    activityM : numpy array
+                BiAffect typing activity by hour of shape (days x hours).
+    speedM : numpy array
+             BiAffect typing speed by hour of shape (days x hours).
+    """
+    import numpy as np
+    import pandas as pd
+
+    # get matrix of typing activity by day and hour
+    df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
+    M = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
+
+    # insert hours with no activity across all days
+    missingHours = [h for h in range(24) if h not in list(M['size'].columns)]
+    M.columns = M.columns.droplevel(0)
+    for h in missingHours:
+        M.insert(h,h,[0]*M.shape[0])
+    M = M.sort_index(ascending=True)
+
+    # Filter users with not enough data
+    # find avg number of hours of activity/day
+    Mbinary = np.where(M > 0, 1, 0)
+    avgActivityPerDay = Mbinary.mean(axis=1).mean()
+    # of the days with kp, find median amount
+    Mkp = np.where(M > 0, M, np.nan)
+    avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
+    # if not enough typing activity for user, skip user
+    if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
+        print('not enough data')
+        return 'not enough data'
+
+    # remove first and last days
+    activityM = M[1:-1]
+
+    # if less than 7 days, continue
+    if activityM.shape[0] < 7:
+        print('not enough days')
+        return 'not enough data'
+
+    # remove 7-day segments of data if not enough
+    slidingWindowListForRemoval = sliding_window(activityM, window_size=7, gap=1)
+    daysToRemove = []
+    c = 0
+    for w in slidingWindowListForRemoval:
+        if len(w) < 7:
+            break
+        Wbinary = np.where(w > 0, 1, 0)
+        avgActivity = Wbinary.mean(axis=1).mean()
+        Wkp = np.where(w > 0, w, np.nan)
+        avgAmount = np.nanmedian(np.nanmedian(Wkp, axis=1))
+        if (avgActivity < 0.2) | (avgAmount < 50):
+            daysToRemove.extend(list(range(c, c + 7)))
+        c += 1
+    # remove rows corresponding to indices in daysToRemove
+    activityM = activityM[~activityM.index.isin([*set(daysToRemove)])]
+
+    # if less than 7 days, return not enough data
+    if activityM.shape[0] < 7:
+        print('not enough days')
+        return 'not enough data'
+
+    # incorporate typing speed
+    speedM=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
+    speedM.columns = speedM.columns.droplevel(0)
+    for h in missingHours:
+        speedM.insert(h,h,[np.nan]*speedM.shape[0])
+    speedM = speedM.sort_index(ascending=True)
+
+    # remove first and last days
+    speedM = speedM[1:-1]
+    # remove rows corresponding to indices in daysToRemove
+    speedM = speedM[~speedM.index.isin([*set(daysToRemove)])]
+    speedM = speedM.replace(np.nan, 0)
+
+    return activityM, speedM
 
 def day_weight(d1,d2):
     return (d1+d2)
@@ -35,6 +110,7 @@ def hour_weight(h1,h2):
     return (h1+h2)/2
 
 def weighted_adjacency_matrix(mat):
+    import numpy as np
     # days = rows
     # hours = columns
     W = np.zeros((mat.size, mat.size))
@@ -133,7 +209,47 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
+def get_SVD(activityM, speedM):
+    """
+    Apply graph regularized SVD as defined in
+    Vidar & Alvindia (2013) to typing data.
+
+    Parameters
+    ----------
+    activityM : numpy array
+                BiAffect typing activity by hour of shape (days x hours).
+    speedM : numpy array
+             BiAffect typing speed by hour of shape (days x hours).
+
+    Returns
+    -------
+    svdM : numpy array
+           graph regularized SVD of typing features matrix of shape (days x hours).
+    """
+    from scipy.sparse import csgraph
+    import numpy as np
+
+    # normalize nKP matrix
+    activityM = np.log(activityM+1)
+    # SVD
+    # get adjacency matrix for SVD
+    W = weighted_adjacency_matrix(np.array(activityM))
+    # normalize keypress values
+    normKP = np.array(activityM).flatten()
+    ikd_vals = np.array(speedM).flatten()
+    data = np.vstack((normKP,ikd_vals))
+    # get graph laplacian
+    B = csgraph.laplacian(W)
+    # get graph normalized SVD
+    H_star, W_star = regularized_svd(data, B, rank=1, alpha=1, as_sparse=False)
+    # get SVD matrix
+    svdM = W_star.reshape(activityM.shape)
+    if svdM.max() <= 0:
+        svdM = svdM * -1
+    return svdM
+
 def sliding_window(elements, window_size, gap):
+    import numpy as np
     if len(elements) <= window_size:
        return elements
     windows = []
@@ -142,167 +258,33 @@ def sliding_window(elements, window_size, gap):
         windows.append(elements[i:i+window_size])
     return windows
 
-#############################################################################################################
-pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
-pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
+def get_sleepWakeLabels(svd_mat):
+    """
+    Get sleep/wake labels per hour of BiAffect typing data.
 
-# list of user accel files
-all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
-file_type = 'csv'
-if len(all_files) == 0:
-    file_type = 'parquet'
-    all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
+    Parameters
+    ----------
+    df : numpy array
+         graph regularized SVD of typing features matrix of shape (days x hours).
 
-for file in all_files:
-    if file_type == 'csv':
-        df = pd.read_csv(file, index_col=False)
-    else:
-        df = pd.read_parquet(file, engine='pyarrow')
-    user = int(df['userID'].unique())
-    print('user: {}'.format(user))
+    Returns
+    -------
+    sleepWakeMatrix : numpy array
+                      sleep/wake labels per hour of BiAffect typing data 
+                      of shape (days x hours).
+    """
+    import numpy as np
+    from skimage import segmentation
 
-    # get matrix of typing activity by day and hour
-    df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
-    M = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
-
-    # insert hours with no activity across all days
-    missingHours = [h for h in range(24) if h not in list(M['size'].columns)]
-    M.columns = M.columns.droplevel(0)
-    for h in missingHours:
-        M.insert(h,h,[0]*M.shape[0])
-    M = M.sort_index(ascending=True)
-
-    # find avg number of hours of activity/day
-    Mbinary = np.where(M > 0, 1, 0)
-    avgActivityPerDay = Mbinary.mean(axis=1).mean()
-
-    # of the days with kp, find median amount
-    Mkp = np.where(M > 0, M, np.nan)
-    avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
-
-    # if not enough typing activity for user, skip user
-    if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
-        print('not enough data')
-        continue
-
-    # remove first and last days
-    M1 = M[1:-1]
-
-    # if less than 7 days, continue
-    if M1.shape[0] < 7:
-        print('not enough days')
-        continue
-
-    # remove 7-day segments of data if not enough
-    slidingWindowListForRemoval = sliding_window(M1, window_size=7, gap=1)
-    daysToRemove = []
-    c = 0
-    for w in slidingWindowListForRemoval:
-        if len(w) < 7:
-            break
-        Wbinary = np.where(w > 0, 1, 0)
-        avgActivity = Wbinary.mean(axis=1).mean()
-        Wkp = np.where(w > 0, w, np.nan)
-        avgAmount = np.nanmedian(np.nanmedian(Wkp, axis=1))
-        if (avgActivity < 0.2) | (avgAmount < 50):
-            daysToRemove.extend(list(range(c, c + 7)))
-        c += 1
-    # remove rows corresponding to indices in daysToRemove
-    M1 = M1[~M1.index.isin([*set(daysToRemove)])]
-
-    # if less than 7 days, continue
-    if M1.shape[0] < 7:
-        print('not enough days')
-        continue
-
-    # incorporate typing speed
-    Mspeed=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
-    Mspeed.columns = Mspeed.columns.droplevel(0)
-    for h in missingHours:
-        Mspeed.insert(h,h,[np.nan]*Mspeed.shape[0])
-    Mspeed = Mspeed.sort_index(ascending=True)
-
-    # remove first and last days
-    Mspeed = Mspeed[1:-1]
-    # remove rows corresponding to indices in daysToRemove
-    Mspeed = Mspeed[~Mspeed.index.isin([*set(daysToRemove)])]
-    Mspeed = Mspeed.replace(np.nan, 0)
-
-    # number of days and hours
-    n_days = M1.shape[0]
-    n_hrs = M1.shape[1]
-
-    # normalize nKP matrix
-    # kpSum = M1.sum().sum()
-    # M1 = M1/kpSum
-    # medKP = np.nanmedian(M1[M1>0])
-    # M1 = M1/medKP
-    # M1 = np.log(M1+1)
-    # each row sums to 1
-    rowSums=np.array(M1.sum(axis=1))
-    M1 = (np.array(M1).T/rowSums).T
-
-#############################################################################################################
-# SVD
-    # get adjacency matrix for SVD
-    W = weighted_adjacency_matrix(np.array(M1))
-    # normalize keypress values
-    normKP = np.array(M1).flatten()
-    ikd_vals = np.array(Mspeed).flatten()
-    data = np.vstack((normKP,ikd_vals))
-    # get graph laplacian
-    B = csgraph.laplacian(W)
-    # get graph normalized SVD
-    H_star, W_star = regularized_svd(data, B, rank=1, alpha=50, as_sparse=False)
-    # get SVD matrix
-    svdM = W_star.reshape(M1.shape)
-    if svdM.max() <= 0:
-        svdM = svdM * -1
-
-#############################################################################################################
-# Binarize SVD
-
-### Straight from SVD
-    binarizedSVD = np.where(svdM == 0, 0,1)
+    # Binarize SVD
+    binarizedSVD = np.where(svd_mat == 0, 0,1)
     # sleep/wake labels from binarized SVD matrix
     sleep_label = 0
     wake_label = 1
-    
-# ### K-Means method
-#     # K-means
-#     dfWstar = pd.DataFrame(svdM.reshape(-1,1), columns = ['vals'])
-#     kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
-#     dfKmeans = pd.DataFrame({
-#         # 'pca_x': X_pca[:, 0],
-#         # 'pca_y': X_pca[:, 1],
-#         'graph_reg_SVD_vals': dfWstar['vals'],
-#         'cluster': kmeans.labels_})
-#     # find sleep and wake labels
-#     binarizedSVD = dfKmeans['cluster'].to_numpy().reshape(svdM.shape)
-#     m = np.array(M1)
-#     # get mean matrix value for each label
-#     i0,j0=np.where(binarizedSVD==0)
-#     vals0 = m[i0,j0]
-#     mean0 = np.mean(vals0)
-#     i1,j1=np.where(binarizedSVD==1)
-#     vals1 = m[i1,j1]
-#     mean1 = np.mean(vals1)
-#     # assign lower value to sleep
-#     sleep_label = int(np.where(mean0 < mean1, 0, 1))
-#     wake_label = int(np.where(mean0 > mean1, 0, 1))
-#     # force sleep label to be 0
-#     if sleep_label == 1:
-#         binarizedSVD = abs(binarizedSVD-1)
-#         sleep_label = 0
-#         wake_label = 1
-
-
-#############################################################################################################
-# flood fill main sleep component
-
+    # flood fill main sleep component
     # initiate matrix filled with value 2 (meaning no label yet)
-    floodFillM = np.full(shape=svdM.shape, fill_value=2, dtype='int')
-    for r in range(svdM.shape[0]):
+    floodFillM = np.full(shape=svd_mat.shape, fill_value=2, dtype='int')
+    for r in range(svd_mat.shape[0]):
         # get row
         row = binarizedSVD[r]
         # if entire row is sleep, continue
@@ -311,9 +293,9 @@ for file in all_files:
             continue
         # if wake labels only during hours 2-15, get min from 0-24 hr range
         if ((binarizedSVD[r, 2:15] == np.array([wake_label]*13)).all()) == True:
-            idx_rowMin = np.argmin(svdM[r])
+            idx_rowMin = np.argmin(svd_mat[r])
         else: # else limit min hour to between hr 2-15
-            idx_rowMin = np.argmin(svdM[r, 2:15]) + 2
+            idx_rowMin = np.argmin(svd_mat[r, 2:15]) + 2
         # if min value not equal to sleep_label, then no sleep that day. continue
         if binarizedSVD[r,idx_rowMin] != sleep_label:
             floodFillM[r] = [wake_label]*len(row)
@@ -325,7 +307,7 @@ for file in all_files:
 
         # add sleep label before midnight if exists
         # if iteration at last row
-        if r == svdM.shape[0]-1:
+        if r == svd_mat.shape[0]-1:
             # if last cell is sleep label
             if (row[-1] == sleep_label):
                 i = 0
@@ -373,30 +355,49 @@ for file in all_files:
         windowCount += 1
     # reshape array to be matrix of sleep/wake activity
     sleepWakeMatrix = floodFillFlatten.reshape(binarizedSVD.shape)
-      
+    return sleepWakeMatrix
 
-#############################################################################################################
-# Visualize heatmap of steps
+def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
+    """
+    Get heatmaps of steps in process to label BiAffect typing data as sleep/wake.
+
+    Parameters
+    ----------
+    activityM : numpy array
+                BiAffect typing activity by hour of shape (days x hours).
+    speedM : numpy array
+             BiAffect typing speed by hour of shape (days x hours).
+    svdM : numpy array
+           graph regularized SVD of typing features matrix of shape (days x hours).
+    sleepWakeMatrix : numpy array
+                      sleep/wake labels per hour of BiAffect typing data 
+                      of shape (days x hours).
+
+    Returns
+    -------
+    f : 2 x 2 matplotlib figure
+        heatmaps of steps to label BiAffect typing data
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import matplotlib as mpl
+
+    # Visualize heatmap of steps
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10))
     # PLOT 1
-    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=7,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    sns.heatmap(svdM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.002,
+    sns.heatmap(speedM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 3
+    sns.heatmap(svdM, cmap='viridis', ax=ax[1,0],
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 4
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
-        colors=['#de8f05', '#0173b2'],
-        N=2)
-    sns.heatmap(binarizedSVD, ax=ax[1,0], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[1,0].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
-    # PLOT 4
+        colors=['#de8f05', '#0173b2'], N=2)
     sns.heatmap(sleepWakeMatrix, ax=ax[1,1], cmap=cmap,
                 cbar_kws={'fraction': 0.043})
     colorbar = ax[1,1].collections[0].colorbar
@@ -404,18 +405,53 @@ for file in all_files:
     colorbar.set_ticklabels(['0', '1'])
     colorbar.set_label('Cluster')
     ax[0,0].set(title='Original Typing Activity', xlabel='Hour', ylabel='Day')
-    ax[0,1].set(title='Graph Reg. SVD of Typing Activity', xlabel='Hour', ylabel='Day')
-    # ax[1,0].set(title='KMeans of Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='Binarized Graph Reg. SVD of Typing Activity', xlabel='Hour', ylabel='Day')
+    ax[0,1].set(title='Original Typing Speed', xlabel='Hour', ylabel='Day')
+    ax[1,0].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')    
     ax[1,1].set(title='Sleep/Wake Labels', xlabel='Hour', ylabel='Day')
     f.tight_layout()
-    plt.show(f)
-    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_sleepWakeLabels_fromKmeans.png'.format(user))
-    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_sleepWakeLabels_fromBinarizedSVD.png'.format(user))
-    plt.close(f)
+    return f
+
+#############################################################################################################
+pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
+pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
+
+# list of user accel files
+from pyarrow import parquet
+import pandas as pd
+import glob
+import matplotlib as plt
+all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
+file_type = 'csv'
+if len(all_files) == 0:
+    file_type = 'parquet'
+    all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
+
+for file in all_files:
+    if file_type == 'csv':
+        df = pd.read_csv(file, index_col=False)
+    else:
+        df = pd.read_parquet(file, engine='pyarrow')
+    user = int(df['userID'].unique())
+    print('user: {}'.format(user))
+
+    # STEP 1
+    # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
+    Mactivity, Mspeed = get_typingMatrices(df)
+    
+    # STEP 2
+    # get graph regularized SVD
+    svd = get_SVD(Mactivity, Mspeed)
+    
+    # STEP 3
+    # get sleep/wake labels by hour
+    sleepMatrix = get_sleepWakeLabels(svd)
+    
+    # Plot steps
+    plots = plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
+    print(plots)
 
     break
 
-print('finish')
+
 
 # %%

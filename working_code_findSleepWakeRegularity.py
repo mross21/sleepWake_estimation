@@ -1,4 +1,5 @@
 #%%
+from pyarrow import parquet
 import re
 import glob
 import pandas as pd
@@ -303,15 +304,16 @@ dfDiag = pd.read_csv(fileDiag, index_col=False)
 dictDiag = dict(zip(dfDiag['healthCode'], dfDiag['diagnosis']))
 
 # list of user accel files
-all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
+all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
 
 for file in all_files:
-    df = pd.read_csv(file, index_col=False)
+    # df = pd.read_csv(file, index_col=False)
+    df = pd.read_parquet(file, engine='pyarrow')
     user = int(df['userID'].unique())
     print('user: {}'.format(user))
 
-    # if user < 63:
-    #     continue
+    # if user > 65:
+    #     break
 
     df['healthCode'] = df['healthCode'].str.lower()
     df['diagnosis'] = df['healthCode'].map(dictDiag)
@@ -397,14 +399,19 @@ for file in all_files:
     # M1 = M1.sort_index(ascending=True)
 ####################################
 
-    # # incorporate typing speed
-    # Mspeed=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
-    # Mspeed.columns = Mspeed.columns.droplevel(0)
-    # for h in missingHours:
-    #     # M.loc[h] = [0]*M.shape[1] # to add row
-    #     Mspeed.insert(h,h,[np.nan]*Mspeed.shape[0])
-    # Mspeed = Mspeed.sort_index(ascending=True)
+    # incorporate typing speed
+    Mspeed=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
+    Mspeed.columns = Mspeed.columns.droplevel(0)
+    for h in missingHours:
+        # M.loc[h] = [0]*M.shape[1] # to add row
+        Mspeed.insert(h,h,[np.nan]*Mspeed.shape[0])
+    Mspeed = Mspeed.sort_index(ascending=True)
 
+    # remove first and last days
+    Mspeed = Mspeed[1:-1]
+    # remove rows corresponding to indices in daysToRemove
+    Mspeed = Mspeed[~Mspeed.index.isin([*set(daysToRemove)])]
+    Mspeed = Mspeed.replace(np.nan, 0)
 
     # medMax = M.max().median()
     # if medMax < 300:
@@ -413,14 +420,6 @@ for file in all_files:
 
 
 
-
-
-
-    # # LOG TRANSFORM KP
-    # M2 = np.log(M1+1)
-# then look at filtering based on activity per week
-
-## not enough contrast between no kp activity and kp activity after normalization
 
 
 
@@ -448,7 +447,6 @@ for file in all_files:
     # M2=M1.T
     # M2_scaled = pd.DataFrame(std_scaler.fit_transform(M2), columns=M2.columns)
     # M = M2_scaled.T #M1.div(M1.sum(axis=1), axis=0) #normalize(M1, axis=1, norm='l1')
-    kpSum = M1.sum().sum()
     # M1 = M1
 
 # # remove weeks with not enough data
@@ -474,18 +472,32 @@ for file in all_files:
     #     print('mean KP too low')
     #     continue
 
+# normalize nKP
+    kpSum = M1.sum().sum()
+    M1 = M1/kpSum
+    # medKP = np.nanmedian(M1[M1>0])
+    # M1 = M1/medKP
+    # M1 = np.log(M1+1)
+    # # each row sums to 1
+    # rowSums=np.array(M1.sum(axis=1))
+    # M1 = (np.array(M1).T/rowSums).T
+
     # hard code adjacency matrix
     W = weighted_adjacency_matrix(np.array(M1))
 
-    kp_values = np.array(M1).flatten()/kpSum
-    days_arr = np.repeat(range(n_days), n_hrs)
-    hrs_arr = np.array(list(range(n_hrs)) * n_days)
-    data = np.vstack((days_arr,hrs_arr, kp_values))
+    
+    kp_values = np.array(M1).flatten()
+    ikd_vals = np.array(Mspeed).flatten()
+    # days_arr = np.repeat(range(n_days), n_hrs)
+    # hrs_arr = np.array(list(range(n_hrs)) * n_days)
+    # data = np.vstack((days_arr,hrs_arr, kp_values))
+    data = np.vstack((kp_values,ikd_vals))
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(data[2:3], B, rank=1, alpha=50, as_sparse=False)
+    H_star, W_star = regularized_svd(data, B, rank=1, alpha=100, as_sparse=False)
     
     out2 = W_star.reshape(M1.shape)
-    out2 = out2 * -1
+    if out2.max() <= 0:
+        out2 = out2 * -1
     # plt.imshow(W_star.reshape(M1.shape)*-1, cmap='viridis')
     # plt.show()
 
@@ -575,8 +587,22 @@ for file in all_files:
     # # dfLabels['hour'] = list(range(24))*n_days
     # # dfLabels = dfLabels[['day', 'hour', 'cluster']]
     
+# binarize SVD
+    # cluster_mat = np.where(out2 == 0, 0,1)
 
-    cluster_mat = np.where(out2 == 0, 0,1)
+    # K-Means method
+    # K-means
+    dfWstar = pd.DataFrame(out2.reshape(-1,1), columns = ['vals'])
+    kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
+    dfKmeans = pd.DataFrame({
+        # 'pca_x': X_pca[:, 0],
+        # 'pca_y': X_pca[:, 1],
+        'graph_reg_SVD_vals': dfWstar['vals'],
+        'cluster': kmeans.labels_})
+    # find sleep and wake labels
+    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(out2.shape)
+
+
 
     # find sleep and wake labels
     # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M1.shape)
@@ -881,36 +907,36 @@ for file in all_files:
 
     #############################################################
     # Visualize original data heatmap and heatmap with k-means cluster labels
-    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
+    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=False,
                         figsize=(10,10))
     # PLOT 1
-    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax= 0.005, #0.3, #7, #5, #0.005, #500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    sns.heatmap(out2, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.002,
+    sns.heatmap(Mspeed, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # # PLOT 3
-    # sns.heatmap(cutoff, cmap='viridis', ax=ax[1,0], vmin=0, vmax=clip_amount,
-    #             cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    # PLOT 3
+    sns.heatmap(out2, cmap='viridis', ax=ax[1,0], #vmin=0, vmax=0.002,
+                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
 
     # ax[1,0].hist(out2.flatten(), bins=100)
-    # PLOT 3
-    # cluster_mat = dfPCA['cluster'].to_numpy().reshape(M1.shape)
+    # # PLOT 3
+    # # cluster_mat = dfPCA['cluster'].to_numpy().reshape(M1.shape)
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
         colors=['#de8f05', '#0173b2'],
         N=2)
-    sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[1,0].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
+    # sns.heatmap(cluster_mat, ax=ax[1,0], cmap=cmap,
+    #             cbar_kws={'fraction': 0.043})
+    # colorbar = ax[1,0].collections[0].colorbar
+    # colorbar.set_ticks([0.25, 0.75])
+    # colorbar.set_ticklabels(['0', '1'])
+    # colorbar.set_label('Cluster')
 
 
     sns.heatmap(sleepWakeMatrix, ax=ax[1,1], cmap=cmap,
                 cbar_kws={'fraction': 0.043})
-    colorbar = ax[0,1].collections[0].colorbar
+    colorbar = ax[1,1].collections[0].colorbar
     colorbar.set_ticks([0.25, 0.75])
     colorbar.set_ticklabels(['0', '1'])
     colorbar.set_label('Cluster')
@@ -951,18 +977,20 @@ for file in all_files:
     # colorbar.set_label('Cluster')
 
 
-    ax[0,0].set(title='Original', xlabel='Hour', ylabel='Day')
-    ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='K-Means of Graph Reg. SVD', xlabel='Hour', ylabel='Day')
-    # ax[1,0].set(title='Edge Detection of SVD', xlabel='Hour', ylabel='Day')    
+    ax[0,0].set(title='Original Typing Activity', xlabel='Hour', ylabel='Day')
+    # ax[0,1].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    ax[0,1].set(title='Original Typing Speed', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='K-Means of Graph Reg. SVD', xlabel='Hour', ylabel='Day')
+    # ax[1,0].set(title='Binarized Graph Reg. SVD', xlabel='Hour', ylabel='Day')    
+    ax[1,0].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')    
     # ax[1,1].set(title='K-Means Clustering', xlabel='Hour', ylabel='Day')
-    ax[1,1].set(title='Flood Fill of K-Means', xlabel='Hour', ylabel='Day')
+    ax[1,1].set(title='Sleep/Wake Labels', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     plt.show(f)
-    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/user_{}_SVD_kmeans-lowKPDaysSkipped-6hr1hrSlidingWindow.png'.format(user))
-    # # f.savefig(pathOut+'/HRxDAYsizeMat/edge_detection/user_{}.png'.format(user))
-
+    # f.savefig(pathOut+'/HRxDAYsizeMat/sleepWakeLabels/test_norm/kmeans/user_{}_normTotalKP_kmeans_nKPmedIKD-alpha100.png'.format(user))
     plt.close(f)
+
+    break
 
     #############################################################
 
@@ -1064,7 +1092,7 @@ for file in all_files:
     # if user >=25:
     #     break
 
-    # break
+    
 
 #%%
 
