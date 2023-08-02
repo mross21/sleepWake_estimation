@@ -1,4 +1,6 @@
 #%%
+# FUNCTIONS TO GET SLEEP/WAKE LABELS BY HOUR FROM BIAFFECT KEYPRESS FILE
+
 # sort files numerically
 import re
 numbers = re.compile(r'(\d+)')
@@ -7,6 +9,7 @@ def numericalSort(value):
     parts[1::2] = map(int, parts[1::2])
     return(parts)
 
+# calculate typing speed (median IKD)
 def medianAAIKD(dataframe):
     import numpy as np
     grpAA = dataframe.loc[((dataframe['keypress_type'] == 'alphanum') &
@@ -27,9 +30,9 @@ def get_typingMatrices(df):
 
     Returns
     -------
-    activityM : numpy array
+    activityM : pandas dataframe
                 BiAffect typing activity by hour of shape (days x hours).
-    speedM : numpy array
+    speedM : pandas dataframe
              BiAffect typing speed by hour of shape (days x hours).
     """
     import numpy as np
@@ -55,16 +58,14 @@ def get_typingMatrices(df):
     avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
     # if not enough typing activity for user, skip user
     if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
-        print('not enough data')
-        return 'not enough data'
+        return pd.DataFrame(), pd.DataFrame()
 
     # remove first and last days
     activityM = M[1:-1]
 
-    # if less than 7 days, continue
+    # if less than 7 days, skip subject
     if activityM.shape[0] < 7:
-        print('not enough days')
-        return 'not enough data'
+        return pd.DataFrame(), pd.DataFrame()
 
     # remove 7-day segments of data if not enough
     slidingWindowListForRemoval = sliding_window(activityM, window_size=7, gap=1)
@@ -83,12 +84,11 @@ def get_typingMatrices(df):
     # remove rows corresponding to indices in daysToRemove
     activityM = activityM[~activityM.index.isin([*set(daysToRemove)])]
 
-    # if less than 7 days, return not enough data
+    # if less than 7 days, skip subject
     if activityM.shape[0] < 7:
-        print('not enough days')
-        return 'not enough data'
+        return pd.DataFrame(), pd.DataFrame()
 
-    # incorporate typing speed
+    # get matrix of typing speed by hour
     speedM=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
     speedM.columns = speedM.columns.droplevel(0)
     for h in missingHours:
@@ -103,12 +103,15 @@ def get_typingMatrices(df):
 
     return activityM, speedM
 
+# adjacency matrix weight between consecutive days
 def day_weight(d1,d2):
     return (d1+d2)
 
+# adjacency matrix weight between consecutive hours
 def hour_weight(h1,h2):
     return (h1+h2)/2
 
+# calculate weighted adjacency matrix for graph regulated SVD
 def weighted_adjacency_matrix(mat):
     import numpy as np
     # days = rows
@@ -216,9 +219,9 @@ def get_SVD(activityM, speedM):
 
     Parameters
     ----------
-    activityM : numpy array
+    activityM : pandas dataframe
                 BiAffect typing activity by hour of shape (days x hours).
-    speedM : numpy array
+    speedM : pandas dataframe
              BiAffect typing speed by hour of shape (days x hours).
 
     Returns
@@ -248,6 +251,7 @@ def get_SVD(activityM, speedM):
         svdM = svdM * -1
     return svdM
 
+# create list of indices for each sliding window
 def sliding_window(elements, window_size, gap):
     import numpy as np
     if len(elements) <= window_size:
@@ -384,9 +388,9 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
 
     # Visualize heatmap of steps
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-                        figsize=(10,10))
+                        figsize=(10,10), facecolor='w')
     # PLOT 1
-    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=7,
+    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=10,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
     sns.heatmap(speedM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,
@@ -406,37 +410,49 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
     colorbar.set_label('Cluster')
     ax[0,0].set(title='Original Typing Activity', xlabel='Hour', ylabel='Day')
     ax[0,1].set(title='Original Typing Speed', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='Graph Reg. SVD', xlabel='Hour', ylabel='Day')    
+    ax[1,0].set(title='Graph Regularized SVD', xlabel='Hour', ylabel='Day')    
     ax[1,1].set(title='Sleep/Wake Labels', xlabel='Hour', ylabel='Day')
     f.tight_layout()
     return f
 
 #############################################################################################################
-pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
-pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
 
-# list of user accel files
+# file path of BiAffect keypress files
+pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
+
+# import packages
 from pyarrow import parquet
 import pandas as pd
 import glob
-import matplotlib as plt
+
+# get list of keypress files in file path
 all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
 file_type = 'csv'
 if len(all_files) == 0:
     file_type = 'parquet'
     all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
 
+# loop through keypress files
 for file in all_files:
+    # read in keypress file
     if file_type == 'csv':
-        df = pd.read_csv(file, index_col=False)
+        dfKP = pd.read_csv(file, index_col=False)
     else:
-        df = pd.read_parquet(file, engine='pyarrow')
-    user = int(df['userID'].unique())
+        dfKP = pd.read_parquet(file, engine='pyarrow')
+    user = int(dfKP['userID'].unique())
     print('user: {}'.format(user))
 
+    ################################################################
+    # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
+    ################################################################
     # STEP 1
     # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
-    Mactivity, Mspeed = get_typingMatrices(df)
+    ## matrices may have missing days
+    ## check index here to identify day number since first date of typing data
+    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    # if not enough data in keypress file, skip to next subject
+    if len(Mactivity) == 0:
+        continue
     
     # STEP 2
     # get graph regularized SVD
@@ -446,12 +462,14 @@ for file in all_files:
     # get sleep/wake labels by hour
     sleepMatrix = get_sleepWakeLabels(svd)
     
-    # Plot steps
-    plots = plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
-    print(plots)
+    # Plot steps if desired
+    plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
 
-    break
+    ################################################################
 
+    break    
+
+print('finish')
 
 
 # %%
