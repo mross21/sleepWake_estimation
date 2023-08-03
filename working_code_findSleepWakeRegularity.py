@@ -473,11 +473,11 @@ for file in all_files:
     #     continue
 
 # normalize nKP
-    kpSum = M1.sum().sum()
-    M1 = M1/kpSum
+    # kpSum = M1.sum().sum()
+    # M1 = M1/kpSum
     # medKP = np.nanmedian(M1[M1>0])
     # M1 = M1/medKP
-    # M1 = np.log(M1+1)
+    M1 = np.log(M1+1)
     # # each row sums to 1
     # rowSums=np.array(M1.sum(axis=1))
     # M1 = (np.array(M1).T/rowSums).T
@@ -493,7 +493,7 @@ for file in all_files:
     # data = np.vstack((days_arr,hrs_arr, kp_values))
     data = np.vstack((kp_values,ikd_vals))
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(data, B, rank=1, alpha=100, as_sparse=False)
+    H_star, W_star = regularized_svd(data, B, rank=1, alpha=1, as_sparse=False)
     
     out2 = W_star.reshape(M1.shape)
     if out2.max() <= 0:
@@ -588,19 +588,19 @@ for file in all_files:
     # # dfLabels = dfLabels[['day', 'hour', 'cluster']]
     
 # binarize SVD
-    # cluster_mat = np.where(out2 == 0, 0,1)
+    cluster_mat = np.where(out2 == 0, 0,1)
 
-    # K-Means method
-    # K-means
-    dfWstar = pd.DataFrame(out2.reshape(-1,1), columns = ['vals'])
-    kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
-    dfKmeans = pd.DataFrame({
-        # 'pca_x': X_pca[:, 0],
-        # 'pca_y': X_pca[:, 1],
-        'graph_reg_SVD_vals': dfWstar['vals'],
-        'cluster': kmeans.labels_})
-    # find sleep and wake labels
-    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(out2.shape)
+    # # K-Means method
+    # # K-means
+    # dfWstar = pd.DataFrame(out2.reshape(-1,1), columns = ['vals'])
+    # kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
+    # dfKmeans = pd.DataFrame({
+    #     # 'pca_x': X_pca[:, 0],
+    #     # 'pca_y': X_pca[:, 1],
+    #     'graph_reg_SVD_vals': dfWstar['vals'],
+    #     'cluster': kmeans.labels_})
+    # # find sleep and wake labels
+    # cluster_mat = dfKmeans['cluster'].to_numpy().reshape(out2.shape)
 
 
 
@@ -910,7 +910,7 @@ for file in all_files:
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=False,
                         figsize=(10,10))
     # PLOT 1
-    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax= 0.005, #0.3, #7, #5, #0.005, #500,
+    sns.heatmap(M1, cmap='viridis', ax=ax[0,0], vmin=0, vmax= 7, #0.3, #7, #5, #0.005, #500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
     sns.heatmap(Mspeed, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,

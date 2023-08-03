@@ -1,4 +1,5 @@
 #%%
+
 # FUNCTIONS TO GET SLEEP/WAKE LABELS BY HOUR FROM BIAFFECT KEYPRESS FILE
 
 # sort files numerically
@@ -58,14 +59,14 @@ def get_typingMatrices(df):
     avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
     # if not enough typing activity for user, skip user
     if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
-        return pd.DataFrame(), pd.DataFrame()
+        return None, None
 
     # remove first and last days
     activityM = M[1:-1]
 
     # if less than 7 days, skip subject
     if activityM.shape[0] < 7:
-        return pd.DataFrame(), pd.DataFrame()
+        return None, None
 
     # remove 7-day segments of data if not enough
     slidingWindowListForRemoval = sliding_window(activityM, window_size=7, gap=1)
@@ -86,7 +87,7 @@ def get_typingMatrices(df):
 
     # if less than 7 days, skip subject
     if activityM.shape[0] < 7:
-        return pd.DataFrame(), pd.DataFrame()
+        return None, None
 
     # get matrix of typing speed by hour
     speedM=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
@@ -94,7 +95,6 @@ def get_typingMatrices(df):
     for h in missingHours:
         speedM.insert(h,h,[np.nan]*speedM.shape[0])
     speedM = speedM.sort_index(ascending=True)
-
     # remove first and last days
     speedM = speedM[1:-1]
     # remove rows corresponding to indices in daysToRemove
@@ -232,6 +232,8 @@ def get_SVD(activityM, speedM):
     from scipy.sparse import csgraph
     import numpy as np
 
+    if activityM is None:
+        return None
     # normalize nKP matrix
     activityM = np.log(activityM+1)
     # SVD
@@ -279,6 +281,9 @@ def get_sleepWakeLabels(svd_mat):
     """
     import numpy as np
     from skimage import segmentation
+
+    if svd_mat is None:
+        return None
 
     # Binarize SVD
     binarizedSVD = np.where(svd_mat == 0, 0,1)
@@ -361,116 +366,239 @@ def get_sleepWakeLabels(svd_mat):
     sleepWakeMatrix = floodFillFlatten.reshape(binarizedSVD.shape)
     return sleepWakeMatrix
 
-def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
-    """
-    Get heatmaps of steps in process to label BiAffect typing data as sleep/wake.
+def svd_output(dfKP):
+    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    if Mactivity is None:
+        return None
+    svd = get_SVD(Mactivity, Mspeed)
+    return svd
 
-    Parameters
-    ----------
-    activityM : numpy array
-                BiAffect typing activity by hour of shape (days x hours).
-    speedM : numpy array
-             BiAffect typing speed by hour of shape (days x hours).
-    svdM : numpy array
-           graph regularized SVD of typing features matrix of shape (days x hours).
-    sleepWakeMatrix : numpy array
-                      sleep/wake labels per hour of BiAffect typing data 
-                      of shape (days x hours).
+def labels_output(dfKP):
+    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    if Mactivity is None:
+        return None
+    svd = get_SVD(Mactivity, Mspeed)
+    labelsMatrix = get_sleepWakeLabels(svd)
+    return labelsMatrix
 
-    Returns
-    -------
-    f : 2 x 2 matplotlib figure
-        heatmaps of steps to label BiAffect typing data
-    """
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import matplotlib as mpl
+## Circular variance/mean
+def var_circular_variance(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    circVarList = np.apply_along_axis(stats.circvar, 1, M)
+    return np.nanvar(circVarList)
 
-    # Visualize heatmap of steps
-    f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
-                        figsize=(10,10), facecolor='w')
-    # PLOT 1
-    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=10,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 2
-    sns.heatmap(speedM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 3
-    sns.heatmap(svdM, cmap='viridis', ax=ax[1,0],
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
-    # PLOT 4
-    cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom',
-        colors=['#de8f05', '#0173b2'], N=2)
-    sns.heatmap(sleepWakeMatrix, ax=ax[1,1], cmap=cmap,
-                cbar_kws={'fraction': 0.043})
-    colorbar = ax[1,1].collections[0].colorbar
-    colorbar.set_ticks([0.25, 0.75])
-    colorbar.set_ticklabels(['0', '1'])
-    colorbar.set_label('Cluster')
-    ax[0,0].set(title='Original Typing Activity', xlabel='Hour', ylabel='Day')
-    ax[0,1].set(title='Original Typing Speed', xlabel='Hour', ylabel='Day')
-    ax[1,0].set(title='Graph Regularized SVD', xlabel='Hour', ylabel='Day')    
-    ax[1,1].set(title='Sleep/Wake Labels', xlabel='Hour', ylabel='Day')
-    f.tight_layout()
-    return f
+## Circular variance/mean using normalized KP
+def normalized_var_circular_variance(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    sumKP = M.sum().sum()
+    normM = M/sumKP
+    circVarList = np.apply_along_axis(stats.circvar, 1, normM)
+    return np.nanvar(circVarList)
 
-#############################################################################################################
-## EXAMPLE
+def var_circular_mean(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    circMeanList = np.apply_along_axis(stats.circmean, 1, M)
+    return np.nanvar(circMeanList)
 
-# # file path of BiAffect keypress files
-# pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
+def normalized_var_circular_mean(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    sumKP = M.sum().sum()
+    normM = M/sumKP
+    circMeanList = np.apply_along_axis(stats.circmean, 1, normM)
+    return np.nanvar(circMeanList)
 
-# # import packages
-# from pyarrow import parquet
-# import pandas as pd
-# import glob
-
-# # get list of keypress files in file path
-# all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
-# file_type = 'csv'
-# if len(all_files) == 0:
-#     file_type = 'parquet'
-#     all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
-
-# # loop through keypress files
-# for file in all_files:
-#     # read in keypress file
-#     if file_type == 'csv':
-#         dfKP = pd.read_csv(file, index_col=False)
-#     else:
-#         dfKP = pd.read_parquet(file, engine='pyarrow')
-#     user = int(dfKP['userID'].unique())
-#     print('user: {}'.format(user))
-
-#     ################################################################
-#     # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
-#     ################################################################
-#     # STEP 1
-#     # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
-#     ## matrices may have missing days
-#     ## check index here to identify day number since first date of typing data
-#     Mactivity, Mspeed = get_typingMatrices(dfKP)
-#     # if not enough data in keypress file, skip to next subject
-#     if len(Mactivity) == 0:
-#         continue
+# find # of hours of no activity
+def medianAmount_noActivity(dfKP, sleep_label=0):
+    import numpy as np
+    import pandas as pd
+    labs = labels_output(dfKP)
+    if labs is None:
+        return np.nan
+    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    return np.nanmedian(noActivityAmt)
     
-#     # STEP 2
-#     # get graph regularized SVD
-#     svd = get_SVD(Mactivity, Mspeed)
-    
-#     # STEP 3
-#     # get sleep/wake labels by hour
-#     sleepMatrix = get_sleepWakeLabels(svd)
-    
-#     # Plot steps if desired
-#     plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
+def varAmount_noActivity(dfKP, sleep_label=0):
+    import numpy as np
+    import pandas as pd
+    labs = labels_output(dfKP)
+    if labs is None:
+        return np.nan
+    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    return np.nanvar(noActivityAmt)
 
-#     ################################################################
+def cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    cosine = np.dot(a,b)/(norm(a)*norm(b))
+    return cosine
 
-#     break    
+def adj_cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    a_normalized = a - np.mean(a)
+    b_normalized = b - np.mean(b)
+    cosine = np.dot(a_normalized,b_normalized)/(norm(a_normalized)*norm(b_normalized))
+    return cosine
 
-# print('finish')
+def norm_cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    a_normalized = a/sum(a) # /norm(a)
+    b_normalized = b/sum(a) # /norm(b)
+    cosine = np.dot(a_normalized,b_normalized)/(norm(a_normalized)*norm(b_normalized))
+    return cosine
 
+def get_medianCosSim(df, day_diff):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    sim_list = []
+    for d in range(svdMat.shape[0]):
+        if d < svdMat.shape[0]-day_diff:
+            sim = cosine_similarity(svdMat[d], svdMat[d+day_diff])
+            sim_list.append(sim)
+    return np.nanmedian(sim_list)
 
-# # %%
+def get_medianAdjCosSim(df, day_diff):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    sim_list = []
+    for d in range(svdMat.shape[0]):
+        if d < svdMat.shape[0]-day_diff:
+            sim = adj_cosine_similarity(svdMat[d], svdMat[d+day_diff])
+            sim_list.append(sim)
+    return np.nanmedian(sim_list)
+
+def get_medianNormCosSim(df, day_diff):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    sim_list = []
+    for d in range(svdMat.shape[0]):
+        if d < svdMat.shape[0]-day_diff:
+            sim = norm_cosine_similarity(svdMat[d], svdMat[d+day_diff])
+            sim_list.append(sim)
+    return np.nanmedian(sim_list)
+
+## REST ACTIVITY RHYTHM FEATURES
+#  acrophase
+def acrophase(df):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    # # get hour with most keypresses over whole matrix
+    # max_kp_idx = np.unravel_index(np.argmax(svdMat), svdMat.shape)
+    # get average hour with most keypresses
+    avgMaxKP_idx = np.argmax(svdMat, axis=1).mean()
+    return avgMaxKP_idx #max_kp_idx[1] # return just the hour
+
+# RAR-alpha
+# average ratio of sleep to wake
+def RAR_alpha(dfKP, sleep_label=0, wake_label=1):
+    import numpy as np
+    import pandas as pd
+    labs = labels_output(dfKP)
+    if labs is None:
+        return np.nan
+    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    activityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == wake_label].shape[0])
+    return np.mean(noActivityAmt / activityAmt)
+
+# RAR-beta
+# avg nKP in "wake" hours
+def RAR_beta(dfKP):
+    import numpy as np
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    avgnKP = Mkp.sum(axis=1).mean()
+    return avgnKP
+    # # if calculating from the SVD instead of raw nKP
+    # import numpy.ma as ma
+    # # SVD matrix
+    # svdMat = svd_output(dfKP)
+    # if svdMat is None:
+    #     return np.nan
+    # labelsMatrix = labels_output(dfKP)
+
+    # wake_mask = np.isin(labelsMatrix,[sleep_label]) # mask all sleep labels
+    # wakeOnlyMat = ma.masked_array(svdMat, wake_mask)
+    # avgWakeKP = wakeOnlyMat.sum(axis=1).mean()
+
+# below taken from pyActigraphy
+# https://github.com/ghammad/pyActigraphy/blob/master/pyActigraphy/metrics/metrics.py
+def intradaily_variability(dfKP):
+    import numpy as np
+    import pandas as pd
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    day_mssd = pd.Series(np.array(Mkp).flatten()).diff(1).pow(2).mean()
+    overall_var = np.var(np.array(Mkp))
+    mean_mssd_ratio = day_mssd / overall_var
+    return mean_mssd_ratio
+
+def intradaily_stability(dfKP):
+    import numpy as np
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    meanKPperHr = np.mean(Mkp, axis=0)
+    var_meanKPperHour = np.var(meanKPperHr)
+    overall_var = np.var(np.array(Mkp))
+    ratio = var_meanKPperHour / overall_var
+    return ratio
+
+def M10(arr):
+    import pandas as pd
+    window_activity = pd.Series(arr).rolling(10).sum().shift(-9)
+    m10 = window_activity.max()
+    return m10
+
+def L5(arr):
+    import pandas as pd
+    window_activity = pd.Series(arr).rolling(5).sum().shift(-4)
+    l5 = window_activity.min()
+    return l5
+
+def relative_amplitude(dfKP):
+    import numpy as np
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    rowSums=np.array(Mkp.sum(axis=1))
+    normalizedM = (np.array(Mkp).T/rowSums).T
+    mean_M10 = np.apply_along_axis(M10, 1, normalizedM).mean()
+    mean_L5 = np.apply_along_axis(L5, 1, normalizedM).mean()
+    return mean_M10 - mean_L5
