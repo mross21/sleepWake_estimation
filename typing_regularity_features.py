@@ -1,30 +1,119 @@
 #%%
-import re
-import glob
-import pandas as pd
-from scipy.sparse import csgraph
-import numpy as np
-from sklearn.cluster import KMeans
-from scipy import stats
-import matplotlib.pyplot as plt
+
+# FUNCTIONS TO GET SLEEP/WAKE LABELS BY HOUR FROM BIAFFECT KEYPRESS FILE
 
 # sort files numerically
+import re
 numbers = re.compile(r'(\d+)')
 def numericalSort(value):
     parts = numbers.split(value)
     parts[1::2] = map(int, parts[1::2])
     return(parts)
 
-def closest_hour(lst, K):
-    return lst[min(range(len(lst)), key = lambda i: abs(lst[i]-K))]
+# calculate typing speed (median IKD)
+def medianAAIKD(dataframe):
+    import numpy as np
+    grpAA = dataframe.loc[((dataframe['keypress_type'] == 'alphanum') &
+                                (dataframe['previousKeyType'] == 'alphanum'))]
+    # get median IKD
+    medAAIKD = np.nanmedian(grpAA['IKD']) if len(grpAA) >= 20 else float('NaN')
+    return(medAAIKD)
 
+def get_typingMatrices(df):
+    """
+    Set up Biaffect typing activity and typing speed matrices for graph
+    regularized SVD.
+
+    Parameters
+    ----------
+    df : pandas dataframe
+         preprocessed BiAffect keypress file.
+
+    Returns
+    -------
+    activityM : pandas dataframe
+                BiAffect typing activity by hour of shape (days x hours).
+    speedM : pandas dataframe
+             BiAffect typing speed by hour of shape (days x hours).
+    """
+    import numpy as np
+    import pandas as pd
+
+    # get matrix of typing activity by day and hour
+    df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
+    M = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
+
+    # insert hours with no activity across all days
+    missingHours = [h for h in range(24) if h not in list(M['size'].columns)]
+    M.columns = M.columns.droplevel(0)
+    for h in missingHours:
+        M.insert(h,h,[0]*M.shape[0])
+    M = M.sort_index(ascending=True)
+
+    # Filter users with not enough data
+    # find avg number of hours of activity/day
+    Mbinary = np.where(M > 0, 1, 0)
+    avgActivityPerDay = Mbinary.mean(axis=1).mean()
+    # of the days with kp, find median amount
+    Mkp = np.where(M > 0, M, np.nan)
+    avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
+    # if not enough typing activity for user, skip user
+    if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
+        return None, None
+
+    # remove first and last days
+    activityM = M[1:-1]
+
+    # if less than 7 days, skip subject
+    if activityM.shape[0] < 7:
+        return None, None
+
+    # remove 7-day segments of data if not enough
+    slidingWindowListForRemoval = sliding_window(activityM, window_size=7, gap=1)
+    daysToRemove = []
+    c = 0
+    for w in slidingWindowListForRemoval:
+        if len(w) < 7:
+            break
+        Wbinary = np.where(w > 0, 1, 0)
+        avgActivity = Wbinary.mean(axis=1).mean()
+        Wkp = np.where(w > 0, w, np.nan)
+        avgAmount = np.nanmedian(np.nanmedian(Wkp, axis=1))
+        if (avgActivity < 0.2) | (avgAmount < 50):
+            daysToRemove.extend(list(range(c, c + 7)))
+        c += 1
+    # remove rows corresponding to indices in daysToRemove
+    activityM = activityM[~activityM.index.isin([*set(daysToRemove)])]
+
+    # if less than 7 days, skip subject
+    if activityM.shape[0] < 7:
+        return None, None
+
+    # get matrix of typing speed by hour
+    speedM=df.groupby(['dayNumber','hour'],as_index = False).apply(lambda x: medianAAIKD(x)).pivot('dayNumber','hour')
+    speedM.columns = speedM.columns.droplevel(0)
+    for h in missingHours:
+        speedM.insert(h,h,[np.nan]*speedM.shape[0])
+    speedM = speedM.sort_index(ascending=True)
+    # remove first and last days
+    speedM = speedM[1:-1]
+    # remove rows corresponding to indices in daysToRemove
+    speedM = speedM[~speedM.index.isin([*set(daysToRemove)])]
+    speedM = speedM.replace(np.nan, 0)
+
+    return activityM, speedM
+
+# adjacency matrix weight between consecutive days
 def day_weight(d1,d2):
     return (d1+d2)
 
+# adjacency matrix weight between consecutive hours
 def hour_weight(h1,h2):
     return (h1+h2)/2
 
+# calculate weighted adjacency matrix for graph regulated SVD
 def weighted_adjacency_matrix(mat):
+    import numpy as np
     # days = rows
     # hours = columns
     W = np.zeros((mat.size, mat.size))
@@ -87,6 +176,7 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
     """
     import numpy as np
     from scipy.linalg import svd
+    # from scipy.linalg import cholesky
     from numpy.linalg import cholesky
     from scipy.linalg import inv
     import scipy.sparse as sp
@@ -122,142 +212,393 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
-############################################################################################
-pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
-pathOut = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/matrices/'
+def get_SVD(activityM, speedM):
+    """
+    Apply graph regularized SVD as defined in
+    Vidar & Alvindia (2013) to typing data.
 
-# list of user accel files
-all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
+    Parameters
+    ----------
+    activityM : pandas dataframe
+                BiAffect typing activity by hour of shape (days x hours).
+    speedM : pandas dataframe
+             BiAffect typing speed by hour of shape (days x hours).
 
-dfCircReg = pd.DataFrame({'user': [],
-                          'date': [],
-                          'circvar': [],
-                          'circmean': [],
-                          'amount_noActivity': []})
+    Returns
+    -------
+    svdM : numpy array
+           graph regularized SVD of typing features matrix of shape (days x hours).
+    """
+    from scipy.sparse import csgraph
+    import numpy as np
 
-for file in all_files:
-    df = pd.read_csv(file, index_col=False)
-    user = int(df['userID'].unique())
-    print('user: {}'.format(user))
-
-    # if user != 11:
-    #     continue
-
-    df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
-    M = df.groupby(['dayNumber','hour'],as_index = False).size().pivot('dayNumber','hour').fillna(0)
-
-    # insert hours with no activity across all days
-    missingHours = [h for h in range(24) if h not in list(M['size'].columns)]
-    M.columns = M.columns.droplevel(0)
-    for h in missingHours:
-        M.insert(h,h,[0]*M.shape[0])
-    M1 = M.sort_index(ascending=True)
-
-    # find avg number of hours of activity/day
-    Mbinary = np.where(M > 0, 1, 0)
-    avgActivityPerDay = Mbinary.mean(axis=1).mean()
-    print('avg n hours per day with typing activity: {}'.format(avgActivityPerDay))
-
-    # of the days with kp, find median amount
-    Mkp = np.where(M1 > 0, M1, np.nan)
-    avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
-    print('median amount of kp overall: {}'.format(avgAmountPerDay))
-
-    if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
-        print('not enough data')
-        print('-----------------------------------------------')
-        continue
-
-    # remove first and last days
-    M = M[1:-1]
-
-    # if less than 7 days, continue
-    if M.shape[0] < 7:
-        print('not enough days')
-        continue
-
-    # # insert days with no activity across all hours
-    # missingDays = [d for d in range(M.index[0],M.index[-1]) if d not in list(M.index)]
-    # for d in missingDays:
-    #     M.loc[d] = [0]*M.shape[1] # to add row
-    # M = M.sort_index(ascending=True)
-
-
-    n_days = M.shape[0]
-    n_hrs = M.shape[1]
-
-    # hard code adjacency matrix
-    W = weighted_adjacency_matrix(np.array(M))
-
-    kp_values = np.array(M).flatten()
-    days_arr = np.repeat(range(n_days), n_hrs)
-    hrs_arr = np.array(list(range(n_hrs)) * n_days)
-    data = np.vstack((days_arr,hrs_arr, kp_values))
+    if activityM is None:
+        return None
+    # normalize nKP matrix
+    activityM = np.log(activityM+1)
+    # SVD
+    # get adjacency matrix for SVD
+    W = weighted_adjacency_matrix(np.array(activityM))
+    # normalize keypress values
+    normKP = np.array(activityM).flatten()
+    ikd_vals = np.array(speedM).flatten()
+    data = np.vstack((normKP,ikd_vals))
+    # get graph laplacian
     B = csgraph.laplacian(W)
-    H_star, W_star = regularized_svd(data, B, rank=2, alpha=0.1, as_sparse=False)
+    # get graph normalized SVD
+    H_star, W_star = regularized_svd(data, B, rank=1, alpha=1, as_sparse=False)
+    # get SVD matrix
+    svdM = W_star.reshape(activityM.shape)
+    if svdM.max() <= 0:
+        svdM = svdM * -1
+    return svdM
 
-    out2 = W_star.reshape(M.shape)
-    out2 = out2 * -1
-    clip_amount = out2.max()/4
-    cutoff = np.clip(out2, 0, clip_amount)
+# create list of indices for each sliding window
+def sliding_window(elements, window_size, gap):
+    import numpy as np
+    if len(elements) <= window_size:
+       return elements
+    windows = []
+    ls = np.arange(0, len(elements), gap)
+    for i in ls:
+        windows.append(elements[i:i+window_size])
+    return windows
 
-    # k means
-    dfWstar = pd.DataFrame(cutoff.reshape(-1,1), columns = ['vals'])
-    kmeans = KMeans(n_clusters=2, random_state=123).fit(dfWstar)
-    dfKmeans = pd.DataFrame({'day': (pd.Series(np.arange(n_days)).repeat(n_hrs).reset_index(drop=True)),
-        'graph_reg_SVD_vals': dfWstar['vals'],
-        'cluster': kmeans.labels_})
+def get_sleepWakeLabels(svd_mat):
+    """
+    Get sleep/wake labels per hour of BiAffect typing data.
 
-    ## Circular variance/mean
-    circVarList = np.apply_along_axis(stats.circvar, 1, out2)
-    circMeanList = np.apply_along_axis(stats.circmean, 1, out2)
+    Parameters
+    ----------
+    df : numpy array
+         graph regularized SVD of typing features matrix of shape (days x hours).
 
-    # find sleep and wake labels
-    cluster_mat = dfKmeans['cluster'].to_numpy().reshape(M.shape)
-    m = np.array(M)
-    # get mean matrix value for each label
-    i0,j0=np.where(cluster_mat==0)
-    vals0 = m[i0,j0]
-    median0 = np.mean(vals0)
-    i1,j1=np.where(cluster_mat==1)
-    vals1 = m[i1,j1]
-    median1 = np.mean(vals1)
-    # assign lower value to sleep
-    sleep_label = np.where(median0 < median1, 0, 1)
-    wake_label = np.where(median0 > median1, 0, 1)
+    Returns
+    -------
+    sleepWakeMatrix : numpy array
+                      sleep/wake labels per hour of BiAffect typing data 
+                      of shape (days x hours).
+    """
+    import numpy as np
+    from skimage import segmentation
 
-    ## OLD
-    # wake_label_idx = cutoff[0].argmax()
-    # wake_label = cluster_mat[0,wake_label_idx]
-    # sleep_label_idx = cutoff[0].argmin()
-    # sleep_label = cluster_mat[0,sleep_label_idx]
+    if svd_mat is None:
+        return None
 
-    print('sleep label {}'.format(sleep_label))
-    if wake_label == sleep_label:
-        print('sleep and wake labels are the same')
-        print('++++++++++++++++++++++++')
-        break
+    # Binarize SVD
+    binarizedSVD = np.where(svd_mat == 0, 0,1)
+    # sleep/wake labels from binarized SVD matrix
+    sleep_label = 0
+    wake_label = 1
+    # flood fill main sleep component
+    # initiate matrix filled with value 2 (meaning no label yet)
+    floodFillM = np.full(shape=svd_mat.shape, fill_value=2, dtype='int')
+    for r in range(svd_mat.shape[0]):
+        # get row
+        row = binarizedSVD[r]
+        # if entire row is sleep, continue
+        if ((row == np.array([sleep_label]*len(row))).all()) == True:
+            floodFillM[r] = [sleep_label]*len(row)
+            continue
+        # if wake labels only during hours 2-15, get min from 0-24 hr range
+        if ((binarizedSVD[r, 2:15] == np.array([wake_label]*13)).all()) == True:
+            idx_rowMin = np.argmin(svd_mat[r])
+        else: # else limit min hour to between hr 2-15
+            idx_rowMin = np.argmin(svd_mat[r, 2:15]) + 2
+        # if min value not equal to sleep_label, then no sleep that day. continue
+        if binarizedSVD[r,idx_rowMin] != sleep_label:
+            floodFillM[r] = [wake_label]*len(row)
+            continue
+        # flood fill 
+        sleep_flood = segmentation.flood(binarizedSVD, (r,idx_rowMin))#NEED DIAG CONNECTIVITY #connectivity=1)
+        # replace output matrix row with flood fill values
+        floodFillM[r] = np.invert(sleep_flood[r])
 
-    plt.imshow(cluster_mat)
-    plt.show()
+        # add sleep label before midnight if exists
+        # if iteration at last row
+        if r == svd_mat.shape[0]-1:
+            # if last cell is sleep label
+            if (row[-1] == sleep_label):
+                i = 0
+                # find earliest index of sleep label for that row prior to midnight
+                while row[23-i] == sleep_label:
+                    end_idx = i
+                    i += 1
+                # replace identified ending cells with sleep label
+                floodFillM[r,(23-end_idx):] = sleep_label
+        # if interation not at last row
+        else:
+            # if last cell is sleep label and first cell of next row is sleep label
+            if (row[-1] == sleep_label) & (binarizedSVD[r+1,0] == sleep_label):
+                i = 0
+                # find earliest index of sleep label for that row prior to midnight
+                while row[23-i] == sleep_label:
+                    end_idx = i
+                    i += 1
+                # replace identified ending cells with sleep label
+                floodFillM[r,(23-end_idx):] = sleep_label
 
-## find # of hours of no activity
-    noActivityAmt = dfKmeans.groupby('day').apply(lambda x: x[x['cluster'] == sleep_label].shape[0])
+    # fill in gaps in sleep component
+    # get list of sliding windows to remove gaps in sleep
+    window_size = 6
+    hr_space = 1
+    floodFillFlatten = floodFillM.flatten()
+    slidingWindowList = sliding_window(floodFillFlatten, window_size, hr_space)
 
-# make dataframe
-    # dates = pd.date_range(df['date'].unique()[1], periods=n_days).tolist()
-    dates = df['date'].unique()[1:-1]
-    dfCircReg = dfCircReg.append(pd.DataFrame({'user': user,
-                              'date': dates,
-                              'circvar': circVarList,
-                              'circmean': circMeanList,
-                              'amount_noActivity': noActivityAmt}))
+    # iterate through windows and fill gap between first and last sleep index in window
+    windowCount = 0
+    for window in slidingWindowList:
+        try:
+            # get index of first sleep label in window
+            firstSleep_idx = next(i for i,v in enumerate(window) if v == sleep_label)
+        # if no sleep label within window, continue
+        except StopIteration:
+            windowCount += 1
+            continue
+        # get index of last sleep label in window
+        lastSleep_idx = len(window) - next(i for i, val in enumerate(reversed(window), 1) if val != wake_label)
+        # get index of first label in window from array of all labels
+        grpIdx0 = windowCount * hr_space
+        # replace window values with sleep labels within identified indices
+        floodFillFlatten[(grpIdx0+firstSleep_idx):(grpIdx0+lastSleep_idx)] = [sleep_label]*(lastSleep_idx-firstSleep_idx)
+        windowCount += 1
+    # reshape array to be matrix of sleep/wake activity
+    sleepWakeMatrix = floodFillFlatten.reshape(binarizedSVD.shape)
+    return sleepWakeMatrix
 
+def svd_output(dfKP):
+    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    if Mactivity is None:
+        return None
+    svd = get_SVD(Mactivity, Mspeed)
+    return svd
+
+def labels_output(dfKP):
+    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    if Mactivity is None:
+        return None
+    svd = get_SVD(Mactivity, Mspeed)
+    labelsMatrix = get_sleepWakeLabels(svd)
+    return labelsMatrix
+
+## Circular variance/mean
+def var_circular_variance(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    circVarList = np.apply_along_axis(stats.circvar, 1, M)
+    return np.nanvar(circVarList)
+
+## Circular variance/mean using normalized KP
+def normalized_var_circular_variance(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    sumKP = M.sum().sum()
+    normM = M/sumKP
+    circVarList = np.apply_along_axis(stats.circvar, 1, normM)
+    return np.nanvar(circVarList)
+
+def var_circular_mean(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    circMeanList = np.apply_along_axis(stats.circmean, 1, M)
+    return np.nanvar(circMeanList)
+
+def normalized_var_circular_mean(df):
+    import numpy as np
+    from scipy import stats
+    M = svd_output(df)
+    if M is None:
+        return np.nan
+    sumKP = M.sum().sum()
+    normM = M/sumKP
+    circMeanList = np.apply_along_axis(stats.circmean, 1, normM)
+    return np.nanvar(circMeanList)
+
+# find # of hours of no activity
+def medianAmount_noActivity(dfKP, sleep_label=0):
+    import numpy as np
+    import pandas as pd
+    labs = labels_output(dfKP)
+    if labs is None:
+        return np.nan
+    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    return np.nanmedian(noActivityAmt)
     
-    # if user > 5:
-    #     break
+def varAmount_noActivity(dfKP, sleep_label=0):
+    import numpy as np
+    import pandas as pd
+    labs = labels_output(dfKP)
+    if labs is None:
+        return np.nan
+    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    return np.nanvar(noActivityAmt)
 
-dfCircReg.to_csv('/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/circVars.csv', index=False)
+def cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    cosine = np.dot(a,b)/(norm(a)*norm(b))
+    return cosine
 
-print('finish')
-# %%
+def adj_cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    a_normalized = a - np.mean(a)
+    b_normalized = b - np.mean(b)
+    cosine = np.dot(a_normalized,b_normalized)/(norm(a_normalized)*norm(b_normalized))
+    return cosine
+
+def norm_cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    a_normalized = a/sum(a) # /norm(a)
+    b_normalized = b/sum(a) # /norm(b)
+    cosine = np.dot(a_normalized,b_normalized)/(norm(a_normalized)*norm(b_normalized))
+    return cosine
+
+def get_medianCosSim(df, day_diff):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    sim_list = []
+    for d in range(svdMat.shape[0]):
+        if d < svdMat.shape[0]-day_diff:
+            sim = cosine_similarity(svdMat[d], svdMat[d+day_diff])
+            sim_list.append(sim)
+    return np.nanmedian(sim_list)
+
+def get_medianAdjCosSim(df, day_diff):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    sim_list = []
+    for d in range(svdMat.shape[0]):
+        if d < svdMat.shape[0]-day_diff:
+            sim = adj_cosine_similarity(svdMat[d], svdMat[d+day_diff])
+            sim_list.append(sim)
+    return np.nanmedian(sim_list)
+
+def get_medianNormCosSim(df, day_diff):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    sim_list = []
+    for d in range(svdMat.shape[0]):
+        if d < svdMat.shape[0]-day_diff:
+            sim = norm_cosine_similarity(svdMat[d], svdMat[d+day_diff])
+            sim_list.append(sim)
+    return np.nanmedian(sim_list)
+
+## REST ACTIVITY RHYTHM FEATURES
+#  acrophase
+def acrophase(df):
+    import numpy as np
+    # SVD matrix
+    svdMat = svd_output(df)
+    if svdMat is None:
+        return np.nan
+    # # get hour with most keypresses over whole matrix
+    # max_kp_idx = np.unravel_index(np.argmax(svdMat), svdMat.shape)
+    # get average hour with most keypresses
+    avgMaxKP_idx = np.argmax(svdMat, axis=1).mean()
+    return avgMaxKP_idx #max_kp_idx[1] # return just the hour
+
+# RAR-alpha
+# average ratio of sleep to wake
+def RAR_alpha(dfKP, sleep_label=0, wake_label=1):
+    import numpy as np
+    import pandas as pd
+    labs = labels_output(dfKP)
+    if labs is None:
+        return np.nan
+    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    activityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == wake_label].shape[0])
+    return np.mean(noActivityAmt / activityAmt)
+
+# RAR-beta
+# avg nKP in "wake" hours
+def RAR_beta(dfKP):
+    import numpy as np
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    avgnKP = Mkp.sum(axis=1).mean()
+    return avgnKP
+    # # if calculating from the SVD instead of raw nKP
+    # import numpy.ma as ma
+    # # SVD matrix
+    # svdMat = svd_output(dfKP)
+    # if svdMat is None:
+    #     return np.nan
+    # labelsMatrix = labels_output(dfKP)
+
+    # wake_mask = np.isin(labelsMatrix,[sleep_label]) # mask all sleep labels
+    # wakeOnlyMat = ma.masked_array(svdMat, wake_mask)
+    # avgWakeKP = wakeOnlyMat.sum(axis=1).mean()
+
+# below taken from pyActigraphy
+# https://github.com/ghammad/pyActigraphy/blob/master/pyActigraphy/metrics/metrics.py
+def intradaily_variability(dfKP):
+    import numpy as np
+    import pandas as pd
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    day_mssd = pd.Series(np.array(Mkp).flatten()).diff(1).pow(2).mean()
+    overall_var = np.var(np.array(Mkp))
+    mean_mssd_ratio = day_mssd / overall_var
+    return mean_mssd_ratio
+
+def intradaily_stability(dfKP):
+    import numpy as np
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    meanKPperHr = np.mean(Mkp, axis=0)
+    var_meanKPperHour = np.var(meanKPperHr)
+    overall_var = np.var(np.array(Mkp))
+    ratio = var_meanKPperHour / overall_var
+    return ratio
+
+def M10(arr):
+    import pandas as pd
+    window_activity = pd.Series(arr).rolling(10).sum().shift(-9)
+    m10 = window_activity.max()
+    return m10
+
+def L5(arr):
+    import pandas as pd
+    window_activity = pd.Series(arr).rolling(5).sum().shift(-4)
+    l5 = window_activity.min()
+    return l5
+
+def relative_amplitude(dfKP):
+    import numpy as np
+    Mkp, _ = get_typingMatrices(dfKP)
+    if Mkp is None:
+        return np.nan
+    rowSums=np.array(Mkp.sum(axis=1))
+    normalizedM = (np.array(Mkp).T/rowSums).T
+    mean_M10 = np.apply_along_axis(M10, 1, normalizedM).mean()
+    mean_L5 = np.apply_along_axis(L5, 1, normalizedM).mean()
+    return mean_M10 - mean_L5
