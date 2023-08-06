@@ -144,7 +144,8 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
     from scipy.linalg import svd
     # from scipy.linalg import cholesky
     from numpy.linalg import cholesky
-    from scipy.linalg import inv
+    from scipy.linalg import solve_triangular
+    # from scipy.linalg import inv
     import scipy.sparse as sp
     from sklearn.utils.extmath import randomized_svd
     from sksparse import cholmod
@@ -167,17 +168,28 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
         H_star = E_tilde  # Eq 15
         W_star = E_tilde.T @ X @ sp.linalg.inv(C)  # Eq 15
+    # else:
+    #     # Eq 11
+    #     I = np.eye(B.shape[0])
+    #     C = I + (alpha * B)
+    #     D = cholesky(C)
+    #     E, S, Fh = svd(X @ inv(D.T))
+    #     E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
+    #     H_star = E_tilde  # Eq 15
+    #     W_star = E_tilde.T @ X @ inv(C)  # Eq 15
+    # return H_star, W_star
     else:
-        # Eq 11
+    # Eq 11
         I = np.eye(B.shape[0])
         C = I + (alpha * B)
         D = cholesky(C)
-        E, S, Fh = svd(X @ inv(D.T))
+        Y = solve_triangular(D, X.T, lower=True).T
+        E, S, Fh = svd(Y)
         E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
         H_star = E_tilde  # Eq 15
-        W_star = E_tilde.T @ X @ inv(C)  # Eq 15
+        # print("C: {}, D: {}, X: {}, Y: {}, E: {}, E_tilde: {}".format(C.shape, D.shape, X.shape, Y.shape, E.shape, E_tilde.shape))
+        W_star = solve_triangular(D.T, Y.T @ E_tilde)  # Eq 15
     return H_star, W_star
-
 
 def cosine_similarity(a,b):
     from numpy.linalg import norm
