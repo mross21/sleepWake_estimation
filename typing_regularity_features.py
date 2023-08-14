@@ -522,6 +522,22 @@ def get_medianNormCosSim(df, day_diff):
             sim_list.append(sim)
     return np.nanmedian(sim_list)
 
+def decay_function(t, a, b):
+    import numpy as np
+    return a * np.exp(-b*t)
+
+def decay_coeff(M, day_range=7):
+    from scipy.optimize import curve_fit
+    l = []
+    for d in range(day_range):
+        cossim=get_medianCosSim(M, d)
+        l.append(cossim)
+    x=list(range(7))
+    y=l
+    popt,_ = curve_fit(decay_function, x, y)
+    return popt[1]
+
+######################################################################
 ## REST ACTIVITY RHYTHM FEATURES
 #  acrophase
 def acrophase(df):
@@ -617,3 +633,5 @@ def relative_amplitude(dfKP):
     mean_M10 = np.apply_along_axis(M10, 1, normalizedM).mean()
     mean_L5 = np.apply_along_axis(L5, 1, normalizedM).mean()
     return mean_M10 - mean_L5
+
+

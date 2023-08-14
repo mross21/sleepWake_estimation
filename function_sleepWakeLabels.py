@@ -101,7 +101,7 @@ def get_typingMatrices(df):
     speedM = speedM[~speedM.index.isin([*set(daysToRemove)])]
     speedM = speedM.replace(np.nan, 0)
 
-    return activityM, speedM
+    return activityM, speedM, avgActivityPerDay, avgAmountPerDay
 
 def cosine_similarity(a,b):
     import numpy as np
@@ -109,25 +109,47 @@ def cosine_similarity(a,b):
     cosine = np.dot(a,b)/(norm(a)*norm(b))
     return cosine
 
+# def get_pCosSim(M, day_diff, percentile):
+#     import numpy as np
+#     # use original typing activity matrix
+#     # M = np.where(M>0,1,0)
+#     M = np.array(M)
+#     if M is None:
+#         return np.nan
+#     sim_list = []
+#     for d in range(M.shape[0]):
+#         if d < M.shape[0]-day_diff:
+#             sim = cosine_similarity(M[d], M[d+day_diff])
+#             sim_list.append(sim)
+#     p = np.nanpercentile(sim_list, percentile)
+#     iqr = np.nanpercentile(sim_list, 75) - np.nanpercentile(sim_list, 25)
+#     min = np.nanpercentile(sim_list, 25) - (1.5*iqr)
+#     return p, iqr, min
+
 # adjacency matrix weight between consecutive days
-def day_weight(d1, d2, arr1, arr2):
-    cosSim = cosine_similarity(arr1, arr2)
-    if cosSim < 0.7:
+def day_weight(d1, d2, arr1, arr2, cosSim_min):
+    # import numpy as np
+    # find cosine similarity between neighboring days binarized for typing/no typing
+    cosSim = cosine_similarity(arr1[0:6]+1, arr2[0:6]+1)
+    # if days not similar enough, assign 0 weight
+    if cosSim < cosSim_min:
         return 0
     else:
         return (d1+d2)/2 * cosSim
 
 # adjacency matrix weight between consecutive hours
-def hour_weight(h1, h2, arr1, arr2):
+def hour_weight(h1, h2, arr1, arr2, cosSim_min):
+    # import numpy as np
+    # # find cosine similarity between neighboring days binarized for typing/no typing
     cosSim = cosine_similarity(arr1, arr2)
-    if cosSim < 0.7:
-        print(cosSim)
+    # if days not similar enough, assign 0 weight
+    if cosSim < cosSim_min:
         return 0
     else:
         return (h1+h2)/2 * cosSim
 
 # calculate weighted adjacency matrix for graph regulated SVD
-def weighted_adjacency_matrix(mat):
+def weighted_adjacency_matrix(mat, cosSim_min):
     import numpy as np
     # days = rows
     # hours = columns
@@ -145,13 +167,16 @@ def weighted_adjacency_matrix(mat):
                 W[i,j] = 0
             # if abs(subtraction of col indices) == 1 & subtraction of row indices == 0:
             elif (abs(j_Mj-i_Mj) == 1) & ((j_Mi-i_Mi) == 0):
-                W[i,j] = hour_weight(mat[i_Mi,i_Mj], mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi])
+                try:
+                    W[i,j] = hour_weight(mat[i_Mi,i_Mj], mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi+1], cosSim_min)
+                except IndexError:
+                    W[i,j] = hour_weight(mat[i_Mi,i_Mj], mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi-1], cosSim_min)
             # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
             elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
-                W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi])
+                W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi], cosSim_min)
             # connect 23hr with 00hr
             elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
-                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0], mat[i_Mi],mat[i_Mi+1])
+                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0], mat[i_Mi],mat[i_Mi+1], cosSim_min)
             else:
                 W[i,j] = 0
     return W
@@ -240,7 +265,7 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = solve_triangular(D.T, Y.T @ E_tilde)  # Eq 15
     return H_star, W_star
 
-def get_SVD(activityM, speedM):
+def get_SVD(activityM, speedM, cosSim_min, a):
     """
     Apply graph regularized SVD as defined in
     Vidar & Alvindia (2013) to typing data.
@@ -260,19 +285,20 @@ def get_SVD(activityM, speedM):
     from scipy.sparse import csgraph
     import numpy as np
 
+
+    # SVD
     # normalize nKP matrix
     activityM = np.log(activityM+1)
-    # SVD
     # get adjacency matrix for SVD
-    W = weighted_adjacency_matrix(np.array(activityM))
-    # normalize keypress values
+    W = weighted_adjacency_matrix(np.array(activityM), cosSim_min)
+    # get input matrix
     normKP = np.array(activityM).flatten()
     ikd_vals = np.array(speedM).flatten()
     data = np.vstack((normKP,ikd_vals))
     # get graph laplacian
     B = csgraph.laplacian(W)
     # get graph normalized SVD
-    H_star, W_star = regularized_svd(data, B, rank=1, alpha=1, as_sparse=False)
+    H_star, W_star = regularized_svd(data, B, rank=1, alpha=a, as_sparse=False)
     # get SVD matrix
     svdM = W_star.reshape(activityM.shape)
     if svdM.max() <= 0:
@@ -481,29 +507,27 @@ for file in all_files:
     # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
     ## matrices may have missing days
     ## check index here to identify day number since first date of typing data
-    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    try:
+        Mactivity, Mspeed, avgSpread, avgAmt= get_typingMatrices(dfKP)
+    except ValueError:
+        continue
     # if not enough data in keypress file, skip to next subject
     if len(Mactivity) == 0:
         continue
 
-
-
-
-
-    # get cosine similarity 1 diff for all days
-    # find 25th percentile and make that the cutoff?
-    # or 25th percentile - 1.5*IQR (bottom line in box plot)
-
-
-
-
-
-
-
     # STEP 2
+    # get cosine similarity cutoff
+    # pCosSim, min = get_pCosSim(Mactivity, day_diff=1, percentile=25)
+    # decay = decay_coeff(Mactivity, day_range=7)
     # get graph regularized SVD
-    svd = get_SVD(Mactivity, Mspeed)
-    
+    # import numpy as np
+    if avgSpread > 0.5:
+        # if high spread, then reduce amount of smoothing in adj matrix
+        svd = get_SVD(Mactivity, Mspeed, a=1, cosSim_min=0.5)
+    else:
+        # if less spread, increase amount of smoothing in adj matrix
+        svd = get_SVD(Mactivity, Mspeed, a=1, cosSim_min=0)
+
     # STEP 3
     # get sleep/wake labels by hour
     sleepMatrix = get_sleepWakeLabels(svd)
@@ -511,7 +535,7 @@ for file in all_files:
     # Plot steps if desired
     plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
 
-    ################################################################
+    ###############################################################
 
     # if user > 15:
     #     break
@@ -526,6 +550,12 @@ print('finish')
 import matplotlib.pyplot as plt
 
 plt.plot(Mspeed.iloc[1])
+
+
+# %%
+
+
+
 
 
 # %%
