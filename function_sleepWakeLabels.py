@@ -103,13 +103,28 @@ def get_typingMatrices(df):
 
     return activityM, speedM
 
+def cosine_similarity(a,b):
+    import numpy as np
+    from numpy.linalg import norm
+    cosine = np.dot(a,b)/(norm(a)*norm(b))
+    return cosine
+
 # adjacency matrix weight between consecutive days
-def day_weight(d1,d2):
-    return (d1+d2)
+def day_weight(d1, d2, arr1, arr2):
+    cosSim = cosine_similarity(arr1, arr2)
+    if cosSim < 0.7:
+        return 0
+    else:
+        return (d1+d2)/2 * cosSim
 
 # adjacency matrix weight between consecutive hours
-def hour_weight(h1,h2):
-    return (h1+h2)/2
+def hour_weight(h1, h2, arr1, arr2):
+    cosSim = cosine_similarity(arr1, arr2)
+    if cosSim < 0.7:
+        print(cosSim)
+        return 0
+    else:
+        return (h1+h2)/2 * cosSim
 
 # calculate weighted adjacency matrix for graph regulated SVD
 def weighted_adjacency_matrix(mat):
@@ -121,22 +136,22 @@ def weighted_adjacency_matrix(mat):
         for j in range(mat.size):
             # iterate across hours of each day then across days
             # d1h1, d1h2, d1h3, d1h4...d2h1, d2h2, d3h3...
-            i_Mi = i//mat.shape[1]
-            i_Mj = i%mat.shape[1]
-            j_Mi = j//mat.shape[1]
-            j_Mj = j%mat.shape[1]
+            i_Mi = i//mat.shape[1]  # i row
+            i_Mj = i%mat.shape[1]   # i column
+            j_Mi = j//mat.shape[1]  # j row
+            j_Mj = j%mat.shape[1]   # j column
             # diagonals
             if i == j:
                 W[i,j] = 0
             # if abs(subtraction of col indices) == 1 & subtraction of row indices == 0:
             elif (abs(j_Mj-i_Mj) == 1) & ((j_Mi-i_Mi) == 0):
-                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
+                W[i,j] = hour_weight(mat[i_Mi,i_Mj], mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi])
             # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
             elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
-                W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj])
+                W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj], mat[i_Mi],mat[j_Mi])
             # connect 23hr with 00hr
             elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
-                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
+                W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0], mat[i_Mi],mat[i_Mi+1])
             else:
                 W[i,j] = 0
     return W
@@ -224,6 +239,7 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         # print("C: {}, D: {}, X: {}, Y: {}, E: {}, E_tilde: {}".format(C.shape, D.shape, X.shape, Y.shape, E.shape, E_tilde.shape))
         W_star = solve_triangular(D.T, Y.T @ E_tilde)  # Eq 15
     return H_star, W_star
+
 def get_SVD(activityM, speedM):
     """
     Apply graph regularized SVD as defined in
@@ -402,10 +418,10 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10), facecolor='w')
     # PLOT 1
-    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=10,
+    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 2
-    sns.heatmap(speedM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,
+    sns.heatmap(speedM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.25,
                 cbar_kws={'label': '# keypresses', 'fraction': 0.043})
     # PLOT 3
     sns.heatmap(svdM, cmap='viridis', ax=ax[1,0],
@@ -430,59 +446,86 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
 #############################################################################################################
 ## EXAMPLE
 
-# # file path of BiAffect keypress files
-# pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
+# file path of BiAffect keypress files
+pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
 
-# # import packages
-# from pyarrow import parquet
-# import pandas as pd
-# import glob
+# import packages
+from pyarrow import parquet
+import pandas as pd
+import glob
 
-# # get list of keypress files in file path
-# all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
-# file_type = 'csv'
-# if len(all_files) == 0:
-#     file_type = 'parquet'
-#     all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
+# get list of keypress files in file path
+all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
+file_type = 'csv'
+if len(all_files) == 0:
+    file_type = 'parquet'
+    all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
 
-# # loop through keypress files
-# for file in all_files:
-#     # read in keypress file
-#     if file_type == 'csv':
-#         dfKP = pd.read_csv(file, index_col=False)
-#     else:
-#         dfKP = pd.read_parquet(file, engine='pyarrow')
-#     user = int(dfKP['userID'].unique())
-#     print('user: {}'.format(user))
+# loop through keypress files
+for file in all_files:
+    # read in keypress file
+    if file_type == 'csv':
+        dfKP = pd.read_csv(file, index_col=False)
+    else:
+        dfKP = pd.read_parquet(file, engine='pyarrow')
+    user = int(dfKP['userID'].unique())
+    print('user: {}'.format(user))
 
-#     ################################################################
-#     # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
-#     ################################################################
-#     # STEP 1
-#     # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
-#     ## matrices may have missing days
-#     ## check index here to identify day number since first date of typing data
-#     Mactivity, Mspeed = get_typingMatrices(dfKP)
-#     # if not enough data in keypress file, skip to next subject
-#     if len(Mactivity) == 0:
-#         continue
+    if user < 28:
+        continue
+
+    ################################################################
+    # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
+    ################################################################
+    # STEP 1
+    # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
+    ## matrices may have missing days
+    ## check index here to identify day number since first date of typing data
+    Mactivity, Mspeed = get_typingMatrices(dfKP)
+    # if not enough data in keypress file, skip to next subject
+    if len(Mactivity) == 0:
+        continue
+
+
+
+
+
+    # get cosine similarity 1 diff for all days
+    # find 25th percentile and make that the cutoff?
+    # or 25th percentile - 1.5*IQR (bottom line in box plot)
+
+
+
+
+
+
+
+    # STEP 2
+    # get graph regularized SVD
+    svd = get_SVD(Mactivity, Mspeed)
     
-#     # STEP 2
-#     # get graph regularized SVD
-#     svd = get_SVD(Mactivity, Mspeed)
+    # STEP 3
+    # get sleep/wake labels by hour
+    sleepMatrix = get_sleepWakeLabels(svd)
     
-#     # STEP 3
-#     # get sleep/wake labels by hour
-#     sleepMatrix = get_sleepWakeLabels(svd)
-    
-#     # Plot steps if desired
-#     plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
+    # Plot steps if desired
+    plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
 
-#     ################################################################
+    ################################################################
 
-#     break    
+    # if user > 15:
+    #     break
+    break    
 
-# print('finish')
+print('finish')
 
 
-# # %%
+# %%
+
+
+import matplotlib.pyplot as plt
+
+plt.plot(Mspeed.iloc[1])
+
+
+# %%
