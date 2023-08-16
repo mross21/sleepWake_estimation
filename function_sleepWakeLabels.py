@@ -470,78 +470,78 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
     return f
 
 #############################################################################################################
-## EXAMPLE
+# Only run if the code is not imported as a module
+if __name__ == '__main__':
+    # file path of BiAffect keypress files
+    pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
 
-# file path of BiAffect keypress files
-pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
+    # import packages
+    from pyarrow import parquet
+    import pandas as pd
+    import glob
 
-# import packages
-from pyarrow import parquet
-import pandas as pd
-import glob
+    # get list of keypress files in file path
+    all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
+    file_type = 'csv'
+    if len(all_files) == 0:
+        file_type = 'parquet'
+        all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
 
-# get list of keypress files in file path
-all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
-file_type = 'csv'
-if len(all_files) == 0:
-    file_type = 'parquet'
-    all_files = sorted(glob.glob(pathIn + "*.parquet"), key = numericalSort)
+    # loop through keypress files
+    for file in all_files:
+        # read in keypress file
+        if file_type == 'csv':
+            dfKP = pd.read_csv(file, index_col=False)
+        else:
+            dfKP = pd.read_parquet(file, engine='pyarrow')
+        user = int(dfKP['userID'].unique())
+        print('user: {}'.format(user))
 
-# loop through keypress files
-for file in all_files:
-    # read in keypress file
-    if file_type == 'csv':
-        dfKP = pd.read_csv(file, index_col=False)
-    else:
-        dfKP = pd.read_parquet(file, engine='pyarrow')
-    user = int(dfKP['userID'].unique())
-    print('user: {}'.format(user))
+        if user < 28:
+            continue
 
-    if user < 28:
-        continue
+        ################################################################
+        # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
+        ################################################################
+        # STEP 1
+        # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
+        ## matrices may have missing days
+        ## check index here to identify day number since first date of typing data
+        try:
+            Mactivity, Mspeed, avgSpread, avgAmt= get_typingMatrices(dfKP)
+        except ValueError:
+            continue
+        # if not enough data in keypress file, skip to next subject
+        if len(Mactivity) == 0:
+            continue
 
-    ################################################################
-    # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
-    ################################################################
-    # STEP 1
-    # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
-    ## matrices may have missing days
-    ## check index here to identify day number since first date of typing data
-    try:
-        Mactivity, Mspeed, avgSpread, avgAmt= get_typingMatrices(dfKP)
-    except ValueError:
-        continue
-    # if not enough data in keypress file, skip to next subject
-    if len(Mactivity) == 0:
-        continue
+        # STEP 2
+        # get cosine similarity cutoff
+        # pCosSim, min = get_pCosSim(Mactivity, day_diff=1, percentile=25)
+        # decay = decay_coeff(Mactivity, day_range=7)
+        # get graph regularized SVD
+        # import numpy as np
+        if avgSpread > 0.5:
+            # if high spread, then reduce amount of smoothing in adj matrix
+            svd = get_SVD(Mactivity, Mspeed, a=1, cosSim_min=0.5)
+        else:
+            # if less spread, increase amount of smoothing in adj matrix
+            svd = get_SVD(Mactivity, Mspeed, a=1, cosSim_min=0)
 
-    # STEP 2
-    # get cosine similarity cutoff
-    # pCosSim, min = get_pCosSim(Mactivity, day_diff=1, percentile=25)
-    # decay = decay_coeff(Mactivity, day_range=7)
-    # get graph regularized SVD
-    # import numpy as np
-    if avgSpread > 0.5:
-        # if high spread, then reduce amount of smoothing in adj matrix
-        svd = get_SVD(Mactivity, Mspeed, a=1, cosSim_min=0.5)
-    else:
-        # if less spread, increase amount of smoothing in adj matrix
-        svd = get_SVD(Mactivity, Mspeed, a=1, cosSim_min=0)
+        # STEP 3
+        # get sleep/wake labels by hour
+        sleepMatrix = get_sleepWakeLabels(svd)
+        
+        # Plot steps if desired
+        plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
 
-    # STEP 3
-    # get sleep/wake labels by hour
-    sleepMatrix = get_sleepWakeLabels(svd)
-    
-    # Plot steps if desired
-    plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
+        ###############################################################
 
-    ###############################################################
+        # if user > 15:
+        #     break
+        break    
 
-    # if user > 15:
-    #     break
-    break    
-
-print('finish')
+    print('finish')
 
 
 # %%
