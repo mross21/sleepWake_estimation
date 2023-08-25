@@ -1,3 +1,4 @@
+#%%
 import function_sleepWakeLabels as sleep
 import pandas as pd
 import glob
@@ -5,8 +6,9 @@ import re
 from os.path import join
 from tqdm import tqdm
 import pickle
+from typing import List
 
-def save_gsvds(dat_dir: str, all_files: list[str], subs: list[str], out_file: str):
+def save_gsvds(dat_dir: str, all_files: List[str], subs: List[str], out_file: str, fun):
     """
     Calculate graph SVDs and save them to file.
 
@@ -28,7 +30,7 @@ def save_gsvds(dat_dir: str, all_files: list[str], subs: list[str], out_file: st
     for i in tqdm(range(n_subs)):
         file = all_files[i]
         sub = subs[i]
-
+        print('user: {}'.format(sub))
         # read in keypress file
         dfKP = pd.read_csv(join(dat_dir, file), index_col=0)
         dfKP['date'] = pd.to_datetime(dfKP['keypressTimestampLocal']) \
@@ -37,7 +39,6 @@ def save_gsvds(dat_dir: str, all_files: list[str], subs: list[str], out_file: st
 
         # Necessary for joining sleep self-report to the key press data
         dates = dfKP[['date', 'dayNumber']].drop_duplicates()
-
         ################################################################
         # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
         ################################################################
@@ -53,7 +54,7 @@ def save_gsvds(dat_dir: str, all_files: list[str], subs: list[str], out_file: st
 
         # STEP 2
         # get graph regularized SVD
-        svd = sleep.get_SVD(Mactivity, Mspeed)
+        svd = sleep.get_SVD(Mactivity, Mspeed, fun)
 
         # STEP 3
         # get sleep/wake labels by hour
@@ -71,11 +72,12 @@ def save_gsvds(dat_dir: str, all_files: list[str], subs: list[str], out_file: st
         pickle.dump(gsvd_results, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == '__main__':
-    dat_dir = '/project_cephfs/3022017.02/projects/lorkno/data'
+    dat_dir = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
 
-    all_files = sorted(glob.glob("sub-*/preproc/*dat-kp.csv", root_dir=dat_dir, recursive=True))
-
+    all_files = sorted(glob.glob(dat_dir+"sub-*/preproc/*dat-kp.csv", recursive=True))
     pat = re.compile(r"sub-(\d+)")
-    subs = [re.match(pat, f).group(1) for f in all_files]
+    subs = [re.search(pat, f).group(1) for f in all_files]
 
     save_gsvds(dat_dir, all_files, subs, out_file='gsvd_results.pkl')
+
+# %%

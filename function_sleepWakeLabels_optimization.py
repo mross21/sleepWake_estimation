@@ -125,16 +125,31 @@ def cosine_similarity(a,b):
     cosine = np.dot(a,b)/(norm(a)*norm(b))
     return cosine
 
-# adjacency matrix weight between consecutive days
-def day_weight(dAround):
-    return np.nanmedian(dAround)
+# # adjacency matrix weight between consecutive days
+# def day_weight(arr1,arr2,dAround):
+#     import numpy as np
+#     # # get cosine similarity between week around the day
+#     # cosSimList = np.apply_along_axis(cosine_similarity, 1, np.array(arrAround), b=np.array(arr1))    
+#     # # remove day's arr compared to itself
+#     # cosSimList = cosSimList[cosSimList <1]
+#     # # get median cosine similarity 
+#     # medCosSim = np.nanmedian(cosSimList)
+
+#     # cosSim = cosine_similarity(arr1,arr2)
+
+
+#     # compare same hour across different days
+#     med = np.nanmedian(dAround)
+#     # print(dAround)
+#     # print(med)
+#     return med * (arr1+arr2)/2
 
 # adjacency matrix weight between consecutive hours
 def hour_weight(h1,h2):
     return (h1+h2)/2
 
 # calculate weighted adjacency matrix for graph regulated SVD
-def weighted_adjacency_matrix(mat):
+def weighted_adjacency_matrix(mat, day_weight):
     # days = rows
     # hours = columns
     W = np.zeros((mat.size, mat.size))
@@ -155,11 +170,11 @@ def weighted_adjacency_matrix(mat):
             # if abs(subtraction of row indices) == 1 & subtraction of col indices == 0:
             elif (abs(j_Mi-i_Mi) == 1) & ((j_Mj-i_Mj) == 0):
                 if i_Mi <= 3:
-                    W[i,j] = day_weight(mat[0:7,i_Mj])
+                    W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj],mat[i_Mi],mat[j_Mi],mat[0:7],mat[0:7,i_Mj])
                 elif i_Mi >= mat.shape[0]-4:
-                    W[i,j] = day_weight(mat[-8:-1,i_Mj])
-                else:
-                    W[i,j] = day_weight(mat[i_Mi-3:i_Mi+4,i_Mj])
+                    W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj],mat[i_Mi],mat[j_Mi],mat[-8:-1],mat[-8:-1,i_Mj])
+                else:     
+                    W[i,j] = day_weight(mat[i_Mi,i_Mj],mat[j_Mi,j_Mj],mat[i_Mi],mat[j_Mi],mat[i_Mi-3:i_Mi+4],mat[i_Mi-3:i_Mi+4,i_Mj])
             # connect 23hr with 00hr
             elif (i_Mj == mat.shape[1]-1) & ((j_Mi-i_Mi) == 1) & (j_Mj == 0):
                 W[i,j] = hour_weight(mat[i_Mi,i_Mj],mat[i_Mi+1,0])
@@ -258,7 +273,7 @@ def get_SVD(activityM, speedM, fun):
     activityM = activityM / activityM.sum().sum() # np.log(activityM+1)
     # SVD
     # get adjacency matrix for SVD
-    W = weighted_adjacency_matrix(np.array(activityM))
+    W = weighted_adjacency_matrix(np.array(activityM), fun)
     pd.DataFrame(W).to_csv('/home/mindy/Desktop/W.csv',index=False)
     # normalize keypress values
     normKP = np.array(activityM).flatten()
