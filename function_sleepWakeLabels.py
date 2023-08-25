@@ -236,7 +236,7 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         W_star = solve_triangular(D.T, Y.T @ E_tilde)  # Eq 15
     return H_star, W_star
 
-def get_SVD(activityM, speedM, fun):
+def get_SVD(activityM, speedM):
     """
     Apply graph regularized SVD as defined in
     Vidar & Alvindia (2013) to typing data.
