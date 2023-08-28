@@ -259,7 +259,6 @@ def get_SVD(activityM, speedM):
     # SVD
     # get adjacency matrix for SVD
     W = weighted_adjacency_matrix(np.array(activityM))
-    pd.DataFrame(W).to_csv('/home/mindy/Desktop/W.csv',index=False)
     # normalize keypress values
     normKP = np.array(activityM).flatten()
     ikd_vals = np.array(speedM).flatten()
@@ -407,14 +406,14 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
     f, ax = plt.subplots(nrows=2,ncols=2, sharex=False, sharey=True,
                         figsize=(10,10), facecolor='w')
     # PLOT 1
-    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=0.005, #10,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    sns.heatmap(activityM, cmap='viridis', ax=ax[0,0], vmin=0, vmax=500,
+                cbar_kws={'label': '# Keypresses', 'fraction': 0.043})
     # PLOT 2
     sns.heatmap(speedM, cmap='viridis', ax=ax[0,1], vmin=0, vmax=0.3,
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+                cbar_kws={'label': 'Median IKD', 'fraction': 0.043})
     # PLOT 3
-    sns.heatmap(svdM, cmap='viridis', ax=ax[1,0],
-                cbar_kws={'label': '# keypresses', 'fraction': 0.043})
+    sns.heatmap(svdM, cmap='viridis', ax=ax[1,0], vmin=0,vmax=0.25,
+                cbar_kws={'fraction': 0.043})
     # PLOT 4
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
         'Custom',
@@ -425,8 +424,8 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
     colorbar.set_ticks([0.25, 0.75])
     colorbar.set_ticklabels(['0', '1'])
     colorbar.set_label('Cluster')
-    ax[0,0].set(title='Original Typing Activity', xlabel='Hour', ylabel='Day')
-    ax[0,1].set(title='Original Typing Speed', xlabel='Hour', ylabel='Day')
+    ax[0,0].set(title='Input Typing Activity', xlabel='Hour', ylabel='Day')
+    ax[0,1].set(title='Input Typing Speed', xlabel='Hour', ylabel='Day')
     ax[1,0].set(title='Graph Regularized SVD', xlabel='Hour', ylabel='Day')    
     ax[1,1].set(title='Sleep/Wake Labels', xlabel='Hour', ylabel='Day')
     f.tight_layout()
@@ -437,12 +436,16 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
 # Only run if the code is not imported as a module
 if __name__ == '__main__':
     # file path of BiAffect keypress files
-    pathIn = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
+    # pathIn = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
+    pathIn = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/BiAffect_data/processed_output/keypress/'
+    pathFig = '/home/mindy/Desktop/BiAffect-iOS/UnMASCK/graph_regularized_SVD/figures/'
 
     from pyarrow import parquet
 
     # get list of keypress files in file path
-    all_files = sorted(glob.glob(pathIn+"sub-*/preproc/*dat-kp.csv", recursive=True))
+    # all_files = sorted(glob.glob(pathIn+"sub-*/preproc/*dat-kp.csv", recursive=True))
+    all_files = sorted(glob.glob(pathIn + "*.csv"), key = numericalSort)
+
     file_type = 'csv'
     if len(all_files) == 0:
         file_type = 'parquet'
@@ -456,9 +459,10 @@ if __name__ == '__main__':
         else:
             dfKP = pd.read_parquet(file, engine='pyarrow')
         # get userID
-        pat = re.compile(r"sub-(\d+)")
-        user = int(re.search(pat, file).group(1))
-        dfKP['userID'] = user
+        # pat = re.compile(r"sub-(\d+)")
+        # user = int(re.search(pat, file).group(1))
+        # dfKP['userID'] = user
+        user = int(dfKP['userID'].unique())
         print('user: {}'.format(user))
 
         # if user < 3038:
@@ -490,7 +494,7 @@ if __name__ == '__main__':
         
         # Plot steps if desired
         f=plot_heatmaps(Mactivity, Mspeed, svdMatrix, sleepMatrix)
-        plt.show(f)
+        f.savefig(pathFig + 'user_{}.png'.format(user))
 
         ################################################################
 

@@ -119,7 +119,7 @@ for sub, res in gsvd_results.items():
     ax2.set_title('Predicted')
     plt.setp(ax2.get_yticklabels(), visible=False)
 
-    sns.heatmap(svd, cmap='viridis', ax=ax3,
+    sns.heatmap(svd, cmap='viridis', ax=ax3,vmin=0,vmax=0.25,
                 cbar_kws={'label': 'Typing intensity', 'fraction': 0.043})
     plt.setp(ax3.get_yticklabels(), visible=False)
     plt.savefig(dat_dir+"images/duration_sub-{}.png".format(sub), dpi=300)
