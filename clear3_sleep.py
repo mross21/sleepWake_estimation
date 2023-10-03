@@ -23,18 +23,21 @@ import pickle
 def reshape_sleep_labels(sleepM):
     # reshape sleep matrix prior to calculating amount of sleep
     import numpy as np
-    sleepM=sleepM.astype(float)
+    sleepM = sleepM.astype(float)
     # check which columns have all same value
     sameVals = np.all(sleepM == sleepM[0,:], axis = 0)
     sameCols = np.where(sameVals == True)[0]
-    for i in sameCols:
+    for i in sameCols.reverse(): # flip order so that choose last col w/ all wake labels
         if np.unique(sleepM.T[i])[0] == 1:
             idx = i
             break
-    if np.unique(sleepM.T[idx])[0] != 1:
-        return None
+    try: # check if idx variable exists
+        idx
+    except NameError: # if not, get first col with most wake labels
+        maxVals = np.sum(sleepM, axis=0) # get sum of all wake labels for each col
+        maxCols = np.where(maxVals == max(maxVals)) # find max sum (most wake labels)
+        idx = maxCols[0][-1]
     flatM = sleepM.flatten()
-    # flatM[flatM == np.nan] = 0
     addNaN1 = np.insert(flatM, 0, [np.nan]*(23-idx))
     addNaN2 = np.append(addNaN1,[np.nan]*(idx+1))
     newSleepMat = addNaN2.reshape(sleepM.shape[0]+1,sleepM.shape[1])
