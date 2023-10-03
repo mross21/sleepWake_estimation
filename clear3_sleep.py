@@ -27,7 +27,7 @@ def reshape_sleep_labels(sleepM):
     # check which columns have all same value
     sameVals = np.all(sleepM == sleepM[0,:], axis = 0)
     sameCols = np.where(sameVals == True)[0]
-    for i in sameCols.reverse(): # flip order so that choose last col w/ all wake labels
+    for i in sameCols[::-1]: # flip order so that choose last col w/ all wake labels
         if np.unique(sleepM.T[i])[0] == 1:
             idx = i
             break
@@ -44,6 +44,7 @@ def reshape_sleep_labels(sleepM):
     outMat = newSleepMat[:-1,]
     return outMat
 
+#%%
 dat_dir = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
 all_files = sorted(glob.glob(dat_dir+"sub-*/preproc/*dat-kp.csv", recursive=True))
 pat = re.compile(r"sub-(\d+)")
@@ -55,7 +56,7 @@ save_gsvds(dat_dir, all_files, subs, out_file=gsvd_file)
 with open(join(dat_dir, gsvd_file), 'rb') as handle:
     gsvd_results = pickle.load(handle)
 
-
+#%%
 # Extract (complete rows of) CLEAR-3 sleep data.
 self_reports_raw = pd.read_csv(join(dat_dir, "clear3daily_20221205_sleep.csv"), index_col=False)
 self_reports = self_reports_raw[['id', 'daterated', 'sleepdur_yest', 'SleepLNQuality']]
