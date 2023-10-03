@@ -20,6 +20,27 @@ import pickle
 
 # sns.set_theme(style="darkgrid")
 
+def reshape_sleep_labels(sleepM):
+    # reshape sleep matrix prior to calculating amount of sleep
+    import numpy as np
+    sleepM=sleepM.astype(float)
+    # check which columns have all same value
+    sameVals = np.all(sleepM == sleepM[0,:], axis = 0)
+    sameCols = np.where(sameVals == True)[0]
+    for i in sameCols:
+        if np.unique(sleepM.T[i])[0] == 1:
+            idx = i
+            break
+    if np.unique(sleepM.T[idx])[0] != 1:
+        return None
+    flatM = sleepM.flatten()
+    # flatM[flatM == np.nan] = 0
+    addNaN1 = np.insert(flatM, 0, [np.nan]*(23-idx))
+    addNaN2 = np.append(addNaN1,[np.nan]*(idx+1))
+    newSleepMat = addNaN2.reshape(sleepM.shape[0]+1,sleepM.shape[1])
+    outMat = newSleepMat[:-1,]
+    return outMat
+
 dat_dir = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
 all_files = sorted(glob.glob(dat_dir+"sub-*/preproc/*dat-kp.csv", recursive=True))
 pat = re.compile(r"sub-(\d+)")
@@ -38,7 +59,6 @@ self_reports = self_reports_raw[['id', 'daterated', 'sleepdur_yest', 'SleepLNQua
 self_reports = self_reports.dropna()
 self_reports['daterated'] = self_reports['daterated'].map(lambda d: date.fromisoformat(d))
 
-
 # Generate plots of predicted and true sleep for every subject.
 # I don't want all these plots embedded in this notebook
 backend = mpl.rcParams['backend']
@@ -53,10 +73,11 @@ for sub, res in gsvd_results.items():
     Mspeed = res['Mspeed']
     svd = res['svd']
     sleepMatrix = res['sleepMatrix']
+    reshapedSleepMatrix = reshape_sleep_labels(sleepMatrix)
 
     # if sub == '3009':
     #     break
-    
+
     # Plot steps
     plot = sleep.plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
     plot.savefig(dat_dir+"images/matrices_sub-{}.png".format(sub), dpi=300)
@@ -69,7 +90,7 @@ for sub, res in gsvd_results.items():
     
     # Fuse self-report with predicted sleep scores
     days = Mactivity.index
-    sleep_pred = np.sum(1 - sleepMatrix, axis=1)
+    sleep_pred = np.sum(1 - reshapedSleepMatrix, axis=1)
     sleep_pred = pd.DataFrame({'dayNumber': days.values, 'sleep_pred': sleep_pred})
     sub_sleep_scores = sub_sleep_scores.merge(sleep_pred, how='outer', on='dayNumber')
     sleep_scores[sub] = sub_sleep_scores
