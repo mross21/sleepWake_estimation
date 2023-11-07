@@ -201,39 +201,50 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
         r x n matrix (Eq 15).
     """
 
-    if as_sparse:
-        # Use sparse matrix operations to reduce memory
-        I = sp.lil_matrix(B.shape)
-        I.setdiag(1)
-        C = I + (alpha * B)
-        print('Computing Cholesky decomposition')
+    # if as_sparse:
+    #     # Use sparse matrix operations to reduce memory
+    #     I = sp.lil_matrix(B.shape)
+    #     I.setdiag(1)
+    #     C = I + (alpha * B)
+    #     print('Computing Cholesky decomposition')
 
-        # Currently cannot get scikit-sparse to work. TODO: Fix scikit-sparse
-        # factor = cholmod.cholesky(C) 
-        # D = factor.L()
-        D = cholesky(C)
+    #     # Currently cannot get scikit-sparse to work. To-do: Fix scikit-sparse
+    #     # factor = cholmod.cholesky(C) 
+    #     # D = factor.L()
+    #     D = cholesky(C)
         
-        print('Computing inverse of D.T')
-        invDt = sp.linalg.inv(D.T)
-        # Eq 11
-        print('Computing randomized SVD')
-        E, S, Fh = randomized_svd(X @ invDt,
-                                  n_components=rank,
-                                  random_state=123)
-        E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
-        H_star = E_tilde  # Eq 15
-        W_star = E_tilde.T @ X @ sp.linalg.inv(C)  # Eq 15
-    else:
-        # Eq 11
-        I = np.eye(B.shape[0])
-        C = I + (alpha * B)
-        D = cholesky(C)
-        Y = solve_triangular(D, X.T, lower=True).T
-        E, s, Fh = svd(Y) # Singular values returned in descending order
-        E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
-        H_star = E_tilde  # Eq 15
-        # print("C: {}, D: {}, X: {}, Y: {}, E: {}, E_tilde: {}".format(C.shape, D.shape, X.shape, Y.shape, E.shape, E_tilde.shape))
-        W_star = solve_triangular(D.T, Y.T @ E_tilde)  # Eq 15
+    #     print('Computing inverse of D.T')
+    #     invDt = sp.linalg.inv(D.T)
+    #     # Eq 11
+    #     print('Computing randomized SVD')
+    #     E, S, Fh = randomized_svd(X @ invDt,
+    #                               n_components=rank,
+    #                               random_state=123)
+    #     E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
+    #     H_star = E_tilde  # Eq 15
+    #     W_star = E_tilde.T @ X @ sp.linalg.inv(C)  # Eq 15
+    # else:
+    # Eq 11
+    # I = np.eye(B.shape[0])
+    # C = I + (alpha * B)
+    # D = cholesky(C)
+    # Y = solve_triangular(D, X.T, lower=True).T
+    # E, s, Fh = svd(Y) # Singular values returned in descending order
+    # E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
+    # H_star = E_tilde  # Eq 15
+    # # print("C: {}, D: {}, X: {}, Y: {}, E: {}, E_tilde: {}".format(C.shape, D.shape, X.shape, Y.shape, E.shape, E_tilde.shape))
+    # W_star = solve_triangular(D.T, Y.T @ E_tilde)  # Eq 15
+    # return H_star, W_star
+    
+    I = np.eye(B.shape[0])
+    C = I + (alpha * B)
+    D = cholesky(C)
+    E, S, Fh = svd(X @ inv(D.T), full_matrices=False)
+    E_tilde = E[:, :rank]  # rank-r approximation; H_star = E_tilde (Eq 15)
+    H_star = E_tilde  # Eq 15
+    S_tilde = S[:rank]
+    Fh_tilde = Fh[:rank,:]
+    W_star = np.diag(S) @ Fh @ inv(D) #E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
 def get_SVD(activityM, speedM):
@@ -268,8 +279,8 @@ def get_SVD(activityM, speedM):
     # get graph normalized SVD
     H_star, W_star = regularized_svd(data, B, rank=1, alpha=1, as_sparse=False)
     # get SVD matrix
-    svdM = W_star.reshape(activityM.shape)
-    if svdM.max() <= 0:
+    svdM = W_star[0].reshape(activityM.shape)
+    if svdM.max() <= 0.00000001:
         svdM = svdM * -1
     return svdM
 
