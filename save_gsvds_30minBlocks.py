@@ -78,6 +78,6 @@ if __name__ == '__main__':
     pat = re.compile(r"sub-(\d+)")
     subs = [re.search(pat, f).group(1) for f in all_files]
 
-    save_gsvds(dat_dir, all_files, subs, out_file='gsvd_results.pkl')
+    save_gsvds_30minBlocks(dat_dir, all_files, subs, out_file='gsvd_results_30minBlocks.pkl')
 
 # %%

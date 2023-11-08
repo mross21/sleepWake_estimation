@@ -505,7 +505,7 @@ if __name__ == '__main__':
         
         # Plot steps if desired
         f=plot_heatmaps(Mactivity, Mspeed, svdMatrix, sleepMatrix)
-        f.savefig(pathFig + 'user_{}.png'.format(user))
+        # f.savefig(pathFig + 'user_{}.png'.format(user))
 
         ################################################################
 

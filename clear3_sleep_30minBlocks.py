@@ -43,7 +43,7 @@ def reshape_sleep_labels(sleepM):
     newSleepMat = addNaN2.reshape(sleepM.shape[0]+1,sleepM.shape[1])
     outMat = newSleepMat[:-1,]
     return outMat
-#%%
+
 
 dat_dir = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
 all_files = sorted(glob.glob(dat_dir+"sub-*/preproc/*dat-kp.csv", recursive=True))
@@ -61,7 +61,7 @@ self_reports_raw = pd.read_csv(join(dat_dir, "clear3daily_20221205_sleep.csv"), 
 self_reports = self_reports_raw[['id', 'daterated', 'sleepdur_yest', 'SleepLNQuality']]
 self_reports = self_reports.dropna()
 self_reports['daterated'] = self_reports['daterated'].map(lambda d: date.fromisoformat(d))
-#%%
+
 # Generate plots of predicted and true sleep for every subject.
 # I don't want all these plots embedded in this notebook
 backend = mpl.rcParams['backend']
@@ -189,7 +189,7 @@ mpl.use(backend)
 sleep_scores_df = pd.concat(sleep_scores).reset_index(0).rename(columns={'level_0':'id'}) #, names="id")
 sleep_scores_df.to_csv(join(dat_dir, "sleep_scores_30minBlocks.csv"), index=False)
 
-#%%
+
 # Analyse the relationships between high correlation values and subject data characteristics
 zipped = list(zip(*cors.items()))
 cor_subs = [int(id) for id in zipped[0]]
