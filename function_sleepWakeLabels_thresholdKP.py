@@ -73,7 +73,7 @@ def get_typingMatrices(df: pd.DataFrame):
     Mkp = np.where(M > 0, M, np.nan)
     avgAmountPerDay = np.nanmedian(np.nanmedian(Mkp, axis=1))
     # if not enough typing activity for user, skip user
-    if (avgActivityPerDay < 0.2) | (avgAmountPerDay < 50):
+    if (avgActivityPerDay < 0.4) | (avgAmountPerDay < 250): # changed thresholds to be more strict
         return pd.DataFrame(), pd.DataFrame()
 
     # remove first and last days

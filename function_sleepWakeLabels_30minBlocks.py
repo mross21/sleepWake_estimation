@@ -249,7 +249,7 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
     H_star = E_tilde  # Eq 15
     S_tilde = S[:rank]
     Fh_tilde = Fh[:rank,:]
-    W_star = np.diag(S) @ Fh @ inv(D) #E_tilde.T @ X @ inv(C)  # Eq 15
+    W_star = np.diag(S_tilde) @ Fh_tilde @ inv(D) #E_tilde.T @ X @ inv(C)  # Eq 15
     return H_star, W_star
 
 def get_SVD(activityM, speedM):
@@ -284,7 +284,7 @@ def get_SVD(activityM, speedM):
     # get graph normalized SVD
     H_star, W_star = regularized_svd(data, B, rank=1, alpha=1, as_sparse=False)
     # get SVD matrix
-    svdM = W_star[0].reshape(activityM.shape)
+    svdM = W_star.reshape(activityM.shape)
     if svdM.max() <= 0.00000001:
         svdM = svdM * -1
     return svdM
@@ -316,7 +316,7 @@ def get_sleepWakeLabels(svd_mat):
     """
 
     # Binarize SVD
-    binarizedSVD = np.where(svd_mat == 0, 0,1)
+    binarizedSVD = np.where(svd_mat <= 0.00000001, 0,1)
     # sleep/wake labels from binarized SVD matrix
     sleep_label = 0
     wake_label = 1

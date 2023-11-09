@@ -3,7 +3,7 @@
 # reformatted to run on python 3.7
 
 import function_sleepWakeLabels as sleep
-from save_gsvds import save_gsvds
+from save_gsvds_thresholdKP import save_gsvds_thresholdKP
 import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr
@@ -49,10 +49,10 @@ dat_dir = '/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/'
 all_files = sorted(glob.glob(dat_dir+"sub-*/preproc/*dat-kp.csv", recursive=True))
 pat = re.compile(r"sub-(\d+)")
 subs = [re.search(pat, f).group(1) for f in all_files]
-gsvd_file = 'gsvd_results.pkl'
+gsvd_file = 'gsvd_results_thresholdKP.pkl'
 
 # Calculate graph SVDs, save them to file, and read them back in.
-save_gsvds(dat_dir, all_files, subs, out_file=gsvd_file)
+save_gsvds_thresholdKP(dat_dir, all_files, subs, out_file=gsvd_file)
 with open(join(dat_dir, gsvd_file), 'rb') as handle:
     gsvd_results = pickle.load(handle)
 
@@ -91,7 +91,7 @@ for sub, res in gsvd_results.items():
 
     # Plot steps
     plot = sleep.plot_heatmaps(Mactivity, Mspeed, svd, sleepMatrix)
-    plot.savefig(dat_dir+"images/matrices_sub-{}.png".format(sub), dpi=300)
+    plot.savefig(dat_dir+"images/matrices_sub-{}_thresholdKP.png".format(sub), dpi=300)
     plt.close()
     sr_sub = self_reports.loc[self_reports['id'] == int(sub)]
 
@@ -134,7 +134,7 @@ for sub, res in gsvd_results.items():
             xlabel="Reported sleep duration (hours)",
             ylabel="Predicted sleep duration (hours)"
         )
-    plt.savefig(dat_dir+"images/scatter_sub-{}.png".format(sub), dpi=300)
+    plt.savefig(dat_dir+"images/scatter_sub-{}_thresholdKP.png".format(sub), dpi=300)
     plt.close()
 
     ### Plot sleep duration
@@ -157,7 +157,7 @@ for sub, res in gsvd_results.items():
     sns.heatmap(svd, cmap='viridis', ax=ax3,vmin=0,vmax=0.25,
                 cbar_kws={'label': 'Typing intensity', 'fraction': 0.043})
     plt.setp(ax3.get_yticklabels(), visible=False)
-    plt.savefig(dat_dir+"images/duration_sub-{}.png".format(sub), dpi=300)
+    plt.savefig(dat_dir+"images/duration_sub-{}_thresholdKP.png".format(sub), dpi=300)
     plt.close()
 
     ### Plot sleep quality
@@ -180,7 +180,7 @@ for sub, res in gsvd_results.items():
     sns.heatmap(svd, cmap='viridis', ax=ax3,
                 cbar_kws={'label': 'Typing intensity', 'fraction': 0.043})
     plt.setp(ax3.get_yticklabels(), visible=False)
-    plt.savefig(dat_dir+"images/quality_sub-{}.png".format(sub), dpi=300)
+    plt.savefig(dat_dir+"images/quality_sub-{}_thresholdKP.png".format(sub), dpi=300)
     plt.close()
 
 mpl.use(backend)
@@ -188,7 +188,7 @@ mpl.use(backend)
 
 # Save sleep scores (id, day number, sleep duration, sleep quality, and predicted sleep duration) to file. To be used in R.
 sleep_scores_df = pd.concat(sleep_scores).reset_index(0).rename(columns={'level_0':'id'}) #, names="id")
-sleep_scores_df.to_csv(join(dat_dir, "sleep_scores.csv"), index=False)
+sleep_scores_df.to_csv(join(dat_dir, "sleep_scores_thresholdKP.csv"), index=False)
 
 
 # Analyse the relationships between high correlation values and subject data characteristics
@@ -211,7 +211,7 @@ sns.relplot(data=cor_reports, x='n', y='correlation') \
         xlabel="Number of days with self-report data",
         ylabel="Correlation betw. reported and predicted amount of sleep"
     )
-plt.savefig(dat_dir+"images/cor_days_self-report.png", dpi=300)
+plt.savefig(dat_dir+"images/cor_days_self-report_thresholdKP.png", dpi=300)
 
 
 total_activities = [np.sum(np.array(res['Mactivity'])) for res in gsvd_results.values()]
@@ -221,7 +221,7 @@ sns.relplot(data=cor_reports, x='activity', y='correlation')\
         xlabel="Total amount of typing activity",
         ylabel="Correlation betw. reported and predicted amount of sleep"
     )
-plt.savefig(dat_dir+"images/cor_activity.png", dpi=300)
+plt.savefig(dat_dir+"images/cor_activity_thresholdKP.png", dpi=300)
 
 cor_reports['n_matrix'] = [len(res['Mactivity'].index) for res in gsvd_results.values()]
 sns.relplot(data=cor_reports, x='n_matrix', y='correlation')\
@@ -229,7 +229,7 @@ sns.relplot(data=cor_reports, x='n_matrix', y='correlation')\
         xlabel="Number of days in activity matrix",
         ylabel="Correlation betw. reported and predicted amount of sleep"
     )
-plt.savefig(dat_dir+"images/cor_days_mat.png", dpi=300)
+plt.savefig(dat_dir+"images/cor_days_mat_thresholdKP.png", dpi=300)
 
 
 mats = [np.array(res['Mactivity']) for res in gsvd_results.values()]
@@ -239,6 +239,6 @@ sns.relplot(data=cor_reports, x='activity_per_day', y='correlation')\
         xlabel="Average typing activity per day",
         ylabel="Correlation betw. reported and predicted amount of sleep"
     )
-plt.savefig(dat_dir+"images/cor_activity_per_day.png", dpi=300)
+plt.savefig(dat_dir+"images/cor_activity_per_day_thresholdKP.png", dpi=300)
 
 # %%
