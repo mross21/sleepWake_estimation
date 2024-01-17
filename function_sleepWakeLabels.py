@@ -56,6 +56,7 @@ def get_typingMatrices(df: pd.DataFrame):
 
     # get matrix of typing activity by day and hour
     df['hour'] = pd.to_datetime(df['keypressTimestampLocal']).dt.hour
+    df['dayNumber'] = df['dayNumber'].astype(int)
     M = df.groupby(['dayNumber','hour'],as_index = False).size().pivot(index='dayNumber', columns='hour').fillna(0)
 
     # insert hours with no activity across all days
@@ -442,6 +443,110 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
     f.tight_layout()
     return f
 
+def plot_input_heatmaps(activityM, speedM):
+    """
+    Get heatmaps of steps in process to label BiAffect typing data as sleep/wake.
+
+    Parameters
+    ----------
+    activityM : numpy array
+                BiAffect typing activity by hour of shape (days x hours).
+    speedM : numpy array
+             BiAffect typing speed by hour of shape (days x hours).
+    
+    Returns
+    -------
+    f : 2 x 2 matplotlib figure
+        heatmaps of steps to label BiAffect typing data
+    """
+    plt.rcParams.update({'font.size': 32})
+    # Visualize heatmap of steps
+    fig, ax = plt.subplots(nrows=2,ncols=1, sharex=False, sharey=False,
+                        figsize=(11,20), facecolor='w')
+    # PLOT 1
+    sns.heatmap(activityM, cmap='viridis', ax=ax[0], vmin=0, vmax=500,
+                cbar_kws={'label': '# Keypresses', 'fraction': 0.043})
+    plt.xticks(rotation=90)
+    plt.yticks(rotation=0)
+
+    # PLOT 2
+    sns.heatmap(speedM, cmap='viridis', ax=ax[1], vmin=0, vmax=0.3,
+                cbar_kws={'label': 'Median IKD (s)', 'fraction': 0.043})
+    plt.xticks(rotation=0)
+    plt.yticks(rotation=0)
+  
+    ax[0].set(title='Input Typing Activity', xlabel='Hour', ylabel='Day')
+    ax[1].set(title='Input Typing Speed', xlabel='Hour', ylabel='Day')
+    fig.tight_layout()
+    return fig
+
+def plot_svdHeatmap(svdM):
+    """
+    Get heatmaps of steps in process to label BiAffect typing data as sleep/wake.
+
+    Parameters
+    ----------
+    svdM : numpy array
+           graph regularized SVD of typing features matrix of shape (days x hours).
+    
+    Returns
+    -------
+    f : matplotlib figure
+        heatmap of SVD matrix
+    """
+
+    # Visualize heatmap of steps
+    plt.rcParams.update({'font.size': 32})
+    f, ax = plt.subplots(nrows=1,ncols=1,figsize=(11,10), facecolor='w')
+    
+    # PLOT 3
+    sns.heatmap(svdM, cmap='viridis', vmin=0,vmax=0.25,
+                cbar_kws={'fraction': 0.043})
+
+    plt.xticks(rotation=0)
+    plt.yticks(rotation=0)
+    
+    ax.set(title='Graph Regularized SVD', xlabel='Hour', ylabel='Day')    
+    f.tight_layout()
+    return f
+
+def plot_sleepWakeHeatmap(sleepWakeMatrix):
+    """
+    Get heatmaps of steps in process to label BiAffect typing data as sleep/wake.
+
+    Parameters
+    ----------
+    sleepWakeMatrix : numpy array
+                      sleep/wake labels per hour of BiAffect typing data 
+                      of shape (days x hours).
+
+    Returns
+    -------
+    f : matplotlib figure
+        heatmap of sleep/wake matrix
+    """
+
+    # Visualize heatmap of steps
+    plt.rcParams.update({'font.size': 32})
+    f, ax = plt.subplots(nrows=1,ncols=1,figsize=(11,10), facecolor='w')
+    
+    # PLOT 4
+    cmap = mpl.colors.LinearSegmentedColormap.from_list('Custom',
+                colors=['#de8f05', '#0173b2'], N=2)
+    sns.heatmap(sleepWakeMatrix, cmap=cmap,cbar_kws={'fraction': 0.043})
+    colorbar = ax.collections[0].colorbar
+    colorbar.set_ticks([0.25, 0.75])
+    colorbar.set_ticklabels(['Sleep', 'Wake'])
+    colorbar.ax.tick_params(rotation=90)
+    # colorbar.set_label('Label')
+
+    plt.xticks(rotation=0)
+    plt.yticks(rotation=0)
+    
+    ax.set(title='Sleep/Wake Labels', xlabel='Hour', ylabel='Day')
+    f.tight_layout()
+    return f
+
 #############################################################################################################
 
 # Only run if the code is not imported as a module
@@ -476,8 +581,8 @@ if __name__ == '__main__':
         user = int(dfKP['userID'].unique())
         print('user: {}'.format(user))
 
-        # if user < 3038:
-        #     continue
+        if user < 6:
+            continue
 
         dfKP['date'] = pd.to_datetime(dfKP['keypressTimestampLocal']) \
             .map(lambda x: x.date())
@@ -503,9 +608,25 @@ if __name__ == '__main__':
         # get sleep/wake labels by hour
         sleepMatrix = get_sleepWakeLabels(svdMatrix)
         
-        # Plot steps if desired
-        f=plot_heatmaps(Mactivity, Mspeed, svdMatrix, sleepMatrix)
+        # # Plot steps if desired
+        # f=plot_heatmaps(Mactivity, Mspeed, svdMatrix, sleepMatrix)
         # f.savefig(pathFig + 'user_{}.png'.format(user))
+
+        # Plot input matrices
+        inputs = plot_input_heatmaps(Mactivity,Mspeed)
+        inputs.savefig('/home/mindy/Desktop/thesis/figures_tables/' + 'user_{}_SVD_inputMatrices-vertical.png'.format(user))
+
+        # # Plot SVD matrix
+        # svdPlot = plot_svdHeatmap(svdMatrix)
+        # svdPlot.savefig('/home/mindy/Desktop/thesis/figures_tables/' + 'user_{}_SVD_SVDmatrix.png'.format(user))
+
+        # # Plot sleep/wake matrix
+        # sleepPlot = plot_sleepWakeHeatmap(sleepMatrix)
+        # sleepPlot.savefig('/home/mindy/Desktop/thesis/figures_tables/' + 'user_{}_SVD_sleepLabels.png'.format(user))
+
+
+
+
 
         ################################################################
 
