@@ -444,10 +444,10 @@ def medianAmount_noActivity(dfKP, sleep_label=0):
     labs = labels_output(dfKP)
     if labs is None:
         return np.nan
-    days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
-    dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
-    noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
-    return np.nanmedian(noActivityAmt)
+    # days = (pd.Series(np.arange(labs.shape[0])).repeat(labs.shape[1]).reset_index(drop=True))+1
+    # dfLabels = pd.DataFrame(np.vstack((days,labs.flatten())).T, columns = ['day','label'])
+    # noActivityAmt = dfLabels.groupby('day').apply(lambda x: x[x['label'] == sleep_label].shape[0])
+    # return np.nanmedian(noActivityAmt)
     
 def varAmount_noActivity(dfKP, sleep_label=0):
     import numpy as np
