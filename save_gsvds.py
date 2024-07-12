@@ -1,4 +1,7 @@
 #%%
+# Loran's code to link estimated sleep from typing activity and CLEAR3 sleep self-reports
+# reformatted to run on python 3.7
+
 import function_sleepWakeLabels as sleep
 import pandas as pd
 import glob
