@@ -1,3 +1,5 @@
-# Use graph regularized SVD to get "sleep"/"wake" labels from typing activity
+# Estimate sleep/wake cycle through smartphone typing activity
 
-Use the functions to calculate features related to typing regularity and amount of "sleep"
+Method using graph regularized SVD to estimate when someone is awake and asleep based on their typical patterns. Also includes typing regularity features engineered from the estimated diurnal pattern.
+
+Used in 

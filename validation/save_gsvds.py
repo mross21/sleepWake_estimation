@@ -1,5 +1,12 @@
-#%%
-import function_sleepWakeLabels_30minBlocks as sleep
+"""
+@author: Loran
+python version 3.7.4
+pandas version: 1.3.5
+numpy version: 1.19.2
+"""
+# Estimated sleep/wake cycle and save file
+
+import estimate_sleepWake_cycle as sleep
 import pandas as pd
 import glob
 import re
@@ -8,7 +15,7 @@ from tqdm import tqdm
 import pickle
 from typing import List
 
-def save_gsvds_30minBlocks(dat_dir: str, all_files: List[str], subs: List[str], out_file: str):
+def save_gsvds(dat_dir: str, all_files: List[str], subs: List[str], out_file: str):
     """
     Calculate graph SVDs and save them to file.
 
@@ -78,6 +85,6 @@ if __name__ == '__main__':
     pat = re.compile(r"sub-(\d+)")
     subs = [re.search(pat, f).group(1) for f in all_files]
 
-    save_gsvds_30minBlocks(dat_dir, all_files, subs, out_file='gsvd_results_30minBlocks.pkl')
+    save_gsvds(dat_dir, all_files, subs, out_file='gsvd_results.pkl')
 
 # %%

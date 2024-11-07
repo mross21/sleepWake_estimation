@@ -1,8 +1,10 @@
 """
 @author: Mindy Ross
 python version 3.7.4
+pandas version: 1.3.5
+numpy version: 1.19.2
 """
-# FUNCTIONS TO GET SLEEP/WAKE LABELS BY HOUR FROM BIAFFECT KEYPRESS FILE
+# Estimate sleep/wake cycle from smartphone typing activity
 
 import re
 import glob
@@ -11,11 +13,7 @@ import pandas as pd
 import numpy as np
 from scipy.linalg import svd
 from numpy.linalg import cholesky
-from scipy.linalg import solve_triangular
 from scipy.linalg import inv
-import scipy.sparse as sp
-from sklearn.utils.extmath import randomized_svd
-# from sksparse import cholmod # Cannot get this to work for now
 from scipy.sparse import csgraph
 from skimage import segmentation
 import matplotlib as mpl
@@ -169,10 +167,10 @@ def weighted_adjacency_matrix(mat):
                 W[i,j] = 0
     return W
 
-def regularized_svd(X, B, rank, alpha, as_sparse=False):
+def regularized_svd(X, B, rank, alpha):
     """
-    Perform graph regularized SVD as defined in
-    Vidar & Alvindia (2013).
+    Perform graph regularized SVD as defined in Vidar & Alvindia 
+    (2013) and modified by Donelli (2023).
 
     Parameters
     ----------
@@ -211,8 +209,8 @@ def regularized_svd(X, B, rank, alpha, as_sparse=False):
 
 def get_SVD(activityM, speedM):
     """
-    Apply graph regularized SVD as defined in
-    Vidar & Alvindia (2013) to typing data.
+    Apply graph regularized SVD as defined by Vidar & Alvindia (2013) 
+    and modified by Donelli (2023) to typing data.
     
     Parameters
     ----------
@@ -297,7 +295,7 @@ def get_sleepWakeLabels(svd_mat):
             floodFillM[r] = [wake_label]*len(row)
             continue
         # flood fill 
-        sleep_flood = segmentation.flood(binarizedSVD, (r,idx_rowMin))#NEED DIAG CONNECTIVITY #connectivity=1)
+        sleep_flood = segmentation.flood(binarizedSVD, (r,idx_rowMin))
         # replace output matrix row with flood fill values
         floodFillM[r] = np.invert(sleep_flood[r])
 
@@ -389,8 +387,7 @@ def plot_heatmaps(activityM, speedM, svdM, sleepWakeMatrix):
                 cbar_kws={'fraction': 0.043})
     # PLOT 4
     cmap = mpl.colors.LinearSegmentedColormap.from_list(
-        'Custom',
-        colors=['#de8f05', '#0173b2'], N=2)
+        'Custom', colors=['#de8f05', '#0173b2'], N=2)
     sns.heatmap(sleepWakeMatrix, ax=ax[1,1], cmap=cmap,
                 cbar_kws={'fraction': 0.043})
     colorbar = ax[1,1].collections[0].colorbar
@@ -504,7 +501,7 @@ def plot_sleepWakeHeatmap(sleepWakeMatrix):
 
 # Only run if the code is not imported as a module
 if __name__ == '__main__':
-    # file path of BiAffect keypress files
+    # file path of keypress files
     pathIn = '/' # insert file path of keypress files
     pathFig = '/'
 
@@ -533,7 +530,7 @@ if __name__ == '__main__':
         dfKP['dayNumber'] = dfKP['date'].rank(method='dense')
 
         ################################################################
-        # FIND SLEEP/WAKE LABELS FROM BIAFFECT KEYPRESS DATA FILE
+        # FIND SLEEP/WAKE LABELS FROM KEYPRESS DATA FILE
         ################################################################
         # STEP 1
         # get input matrices of shape days x hours for typing activity (nKP) and speed (median IKD)
