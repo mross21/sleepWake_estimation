@@ -1,0 +1,225 @@
+---
+title: "Validation of Sleep/Wake Labels"
+author: "Loran"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup}
+library(tidyverse)
+library(lme4)
+library(nlme)
+library(Metrics)
+
+dat_dir <- "/home/mindy/Desktop/BiAffect-iOS/CLEAR/Loran_sleep/data/"
+```
+
+```{r}
+dat <- read.csv(file.path(dat_dir, "sleep_scores.csv"))
+dat
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    id = as.factor(id),
+    sleep_pred_scaled = scale(sleep_pred)
+  )
+```
+
+```{r}
+hist(dat$sleepdur_yest)
+```
+
+```{r}
+hist(dat$sleep_pred)
+```
+
+# Models
+
+```{r}
+m1 <- lmer(sleepdur_yest ~ sleep_pred + (1 | id), data = dat)
+m1
+```
+
+```{r}
+summary(m1)
+```
+
+Decrease correlation by centering predictors:
+
+```{r}
+m1b <- lmer(sleepdur_yest ~ sleep_pred_scaled + (1 | id), data = dat)
+summary(m1b)
+```
+
+```{r}
+plot(m1)
+```
+
+```{r}
+qqnorm(resid(m1))
+qqline(resid(m1))
+```
+
+```{r}
+re <- ranef(m1)$id[[1]]
+
+qqnorm(re)
+qqline(re)
+```
+
+```{r}
+m2 <- lme(sleepdur_yest ~ sleep_pred, 
+          data = dat, 
+          random = ~ 1 | id,
+          na.action = na.omit)
+m2
+```
+
+```{r paged.print=FALSE}
+summary(m2)
+```
+
+```{r}
+sjPlot::tab_model(m1,m1b,dv.labels = c('Model 1', 'Model 1 Scaled'),digits=3, digits.re = 3,show.ci=FALSE, show.loglik = TRUE, show.obs = TRUE, show.ngroups = TRUE, show.icc=TRUE)
+```
+
+# Errors
+
+```{r}
+dat$error <- dat$sleepdur_yest - dat$sleep_pred
+summary(dat$error)
+frac_error <- (dat$sleep_pred - dat$sleepdur_yest) / dat$sleepdur_yest
+mean_frac_error <- mean(na.omit(frac_error))
+mean_frac_error
+
+report_pred <- na.omit(dat[,c("sleepdur_yest","sleep_pred")])
+mae(report_pred$sleepdur_yest,report_pred$sleep_pred)
+
+hist(dat$error, breaks=30)
+
+ggplot(dat = dat, aes(error)) + geom_histogram(bins=25) +
+  xlab("Residuals")+
+  ylab("Frequency")+
+  theme_bw()+
+  theme(text=element_text(face="bold", size=12),
+        # panel.grid.major = element_blank(),
+        # panel.grid.minor = element_blank(),
+        panel.border = element_rect(fill = NA, colour = "NA"),
+        axis.line = element_line(size = 1, colour = "grey80"),
+        legend.title=element_blank())
+```
+
+```{r}
+boxplot(dat$sleepdur_yest - dat$sleep_pred, ylab='residual (hours)')
+```
+
+# Actual vs. Predicted
+
+```{r}
+plot(jitter(dat$sleep_pred), dat$sleepdur_yest)
+```
+
+# Examine amount of typing on accuracy
+
+## Average Amount per Day
+
+Amount of keypresses per day
+
+```{r}
+# group data by the amount of typing
+hist(dat$avgAmountPerDay)
+summary(dat$avgAmountPerDay)
+
+q25 <- quantile(dat$avgAmountPerDay, .25)
+q50 <- quantile(dat$avgAmountPerDay, .5)
+q75 <- quantile(dat$avgAmountPerDay, .75)
+
+# data below 25th percentile
+minDat <- dat %>% filter(dat$avgAmountPerDay < q25)
+q25Dat <- dat %>% filter((dat$avgAmountPerDay >= q25) & (dat$avgAmountPerDay < q50))
+q50Dat <- dat %>% filter((dat$avgAmountPerDay >= q50) & (dat$avgAmountPerDay < q75))
+maxDat <- dat %>% filter(dat$avgAmountPerDay >= q75)
+
+report_pred_minDat <- na.omit(minDat[,c("sleepdur_yest","sleep_pred")])
+minMAE <- mae(report_pred_minDat$sleepdur_yest,report_pred_minDat$sleep_pred)
+minMAE
+report_pred_q25Dat <- na.omit(q25Dat[,c("sleepdur_yest","sleep_pred")])
+q25MAE <- mae(report_pred_q25Dat$sleepdur_yest,report_pred_q25Dat$sleep_pred)
+q25MAE
+report_pred_q50Dat <- na.omit(q50Dat[,c("sleepdur_yest","sleep_pred")])
+q50MAE <- mae(report_pred_q50Dat$sleepdur_yest,report_pred_q50Dat$sleep_pred)
+q50MAE
+report_pred_maxDat <- na.omit(maxDat[,c("sleepdur_yest","sleep_pred")])
+maxMAE <- mae(report_pred_maxDat$sleepdur_yest,report_pred_maxDat$sleep_pred)
+maxMAE
+
+x <- c(0, q25, q50, q75)
+y <- c(minMAE, q25MAE, q50MAE, maxMAE)
+plot(x,y)
+
+dfAmtKP <- data.frame(X = x, Y = y)
+
+ggplot(data = dfAmtKP, aes(x=X,y=Y)) + geom_point() + geom_line() +
+  xlab("Average Amount of KP per Day")+
+  ylab("MAE")+
+  theme_bw()+
+  theme(text=element_text(face="bold", size=12),
+        # panel.grid.major = element_blank(),
+        # panel.grid.minor = element_blank(),
+        panel.border = element_rect(fill = NA, colour = "NA"),
+        axis.line = element_line(size = 1, colour = "grey80"),
+        legend.title=element_blank())
+```
+
+## Average Activity per Day
+
+Number of hours per day containing any typing activity
+
+```{r}
+# group data by the amount of typing
+hist(dat$avgActivityPerDay)
+summary(dat$avgActivityPerDay)
+
+q25 <- quantile(dat$avgActivityPerDay, .25)
+q50 <- quantile(dat$avgActivityPerDay, .5)
+q75 <- quantile(dat$avgActivityPerDay, .75)
+
+# data below 25th percentile
+minDat <- dat %>% filter(dat$avgActivityPerDay < q25)
+q25Dat <- dat %>% filter((dat$avgActivityPerDay >= q25) & (dat$avgActivityPerDay < q50))
+q50Dat <- dat %>% filter((dat$avgActivityPerDay >= q50) & (dat$avgActivityPerDay < q75))
+maxDat <- dat %>% filter(dat$avgActivityPerDay >= q75)
+
+report_pred_minDat <- na.omit(minDat[,c("sleepdur_yest","sleep_pred")])
+minMAE <- mae(report_pred_minDat$sleepdur_yest,report_pred_minDat$sleep_pred)
+minMAE
+report_pred_q25Dat <- na.omit(q25Dat[,c("sleepdur_yest","sleep_pred")])
+q25MAE <- mae(report_pred_q25Dat$sleepdur_yest,report_pred_q25Dat$sleep_pred)
+q25MAE
+report_pred_q50Dat <- na.omit(q50Dat[,c("sleepdur_yest","sleep_pred")])
+q50MAE <- mae(report_pred_q50Dat$sleepdur_yest,report_pred_q50Dat$sleep_pred)
+q50MAE
+report_pred_maxDat <- na.omit(maxDat[,c("sleepdur_yest","sleep_pred")])
+maxMAE <- mae(report_pred_maxDat$sleepdur_yest,report_pred_maxDat$sleep_pred)
+maxMAE
+
+x <- c(0, q25, q50, q75)
+y <- c(minMAE, q25MAE, q50MAE, maxMAE)
+plot(x,y)
+
+dfAmtHrsKP <- data.frame(X = x, Y = y)
+
+ggplot(data = dfAmtHrsKP, aes(x=X,y=Y)) + geom_point() + geom_line() +
+  xlab("Average Fraction of Hours per Day with Keypresses")+
+  ylab("MAE")+
+  theme_bw()+
+  theme(text=element_text(face="bold", size=12),
+        # panel.grid.major = element_blank(),
+        # panel.grid.minor = element_blank(),
+        panel.border = element_rect(fill = NA, colour = "NA"),
+        axis.line = element_line(size = 1, colour = "grey80"),
+        legend.title=element_blank())
+```
